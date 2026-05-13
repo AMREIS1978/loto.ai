@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Todo List - Gestor de Tarefas</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>📋 Minha Lista de Tarefas</h1>
+            <p>Organize suas atividades com facilidade</p>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Add Task Section -->
+            <section class="add-task-section">
+                <h2>Adicionar Nova Tarefa</h2>
+                <form id="taskForm" class="task-form">
+                    <div class="form-group">
+                        <input 
+                            type="text" 
+                            id="taskInput" 
+                            class="task-input" 
+                            placeholder="O que precisa fazer?"
+                            required
+                        >
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="category">Categoria</label>
+                            <select id="category" class="form-control">
+                                <option value="pessoal">Pessoal</option>
+                                <option value="trabalho">Trabalho</option>
+                                <option value="saude">Saúde</option>
+                                <option value="compras">Compras</option>
+                                <option value="outro">Outro</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="priority">Prioridade</label>
+                            <select id="priority" class="form-control">
+                                <option value="baixa">Baixa</option>
+                                <option value="media" selected>Média</option>
+                                <option value="alta">Alta</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="dueDate">Data de Vencimento</label>
+                            <input type="date" id="dueDate" class="form-control">
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-add">+ Adicionar Tarefa</button>
+                </form>
+            </section>
+
+            <!-- Filters Section -->
+            <section class="filters-section">
+                <h2>Filtros</h2>
+                <div class="filters">
+                    <button class="filter-btn active" data-filter="todas">Todas</button>
+                    <button class="filter-btn" data-filter="ativas">Ativas</button>
+                    <button class="filter-btn" data-filter="concluidas">Concluídas</button>
+                </div>
+                
+                <div class="category-filters">
+                    <button class="category-filter active" data-category="todas">Todas</button>
+                    <button class="category-filter" data-category="pessoal">Pessoal</button>
+                    <button class="category-filter" data-category="trabalho">Trabalho</button>
+                    <button class="category-filter" data-category="saude">Saúde</button>
+                    <button class="category-filter" data-category="compras">Compras</button>
+                    <button class="category-filter" data-category="outro">Outro</button>
+                </div>
+            </section>
+
+            <!-- Statistics -->
+            <section class="stats-section">
+                <div class="stat-card">
+                    <h3>Total de Tarefas</h3>
+                    <p class="stat-value" id="totalTasks">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Tarefas Ativas</h3>
+                    <p class="stat-value" id="activeTasks">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Tarefas Concluídas</h3>
+                    <p class="stat-value" id="completedTasks">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Taxa de Conclusão</h3>
+                    <p class="stat-value" id="completionRate">0%</p>
+                </div>
+            </section>
+
+            <!-- Tasks List -->
+            <section class="tasks-section">
+                <h2>Minhas Tarefas</h2>
+                <div id="taskList" class="task-list">
+                    <p class="empty-message">Nenhuma tarefa ainda. Adicione uma para começar! 🚀</p>
+                </div>
+            </section>
+        </main>
+
+        <!-- Action Buttons -->
+        <section class="action-buttons">
+            <button id="clearCompleted" class="btn btn-warning">Limpar Concluídas</button>
+            <button id="exportBtn" class="btn btn-info">📥 Exportar</button>
+            <button id="importBtn" class="btn btn-info">📤 Importar</button>
+            <button id="clearAll" class="btn btn-danger">🗑️ Apagar Tudo</button>
+        </section>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Editar Tarefa</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+            <form id="editForm" class="task-form">
+                <div class="form-group">
+                    <label for="editTaskInput">Descrição</label>
+                    <input type="text" id="editTaskInput" required>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="editCategory">Categoria</label>
+                        <select id="editCategory">
+                            <option value="pessoal">Pessoal</option>
+                            <option value="trabalho">Trabalho</option>
+                            <option value="saude">Saúde</option>
+                            <option value="compras">Compras</option>
+                            <option value="outro">Outro</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="editPriority">Prioridade</label>
+                        <select id="editPriority">
+                            <option value="baixa">Baixa</option>
+                            <option value="media">Média</option>
+                            <option value="alta">Alta</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="editDueDate">Data de Vencimento</label>
+                        <input type="date" id="editDueDate">
+                    </div>
+                </div>
+                
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-success">Salvar</button>
+                    <button type="button" class="btn btn-cancel">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Hidden input for import -->
+    <input type="file" id="fileInput" accept=".json" style="display: none;">
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>Desenvolvido com ❤️ | Todas as tarefas são salvas localmente no seu navegador</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
