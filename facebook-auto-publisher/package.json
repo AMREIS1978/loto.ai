@@ -2,14 +2,46 @@
   "name": "facebook-auto-publisher",
   "version": "1.0.0",
   "private": true,
-  "description": "Aplicação local para automatizar a publicação numa Página Facebook através de cliques no navegador.",
+  "description": "Aplicação local para automatizar publicações numa Página Facebook.",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "install-browser": "playwright install chromium"
+    "dist": "electron-builder --win nsis",
+    "publish": "electron-builder --win nsis --publish always"
   },
   "dependencies": {
-    "electron": "^38.0.0",
+    "electron-updater": "^6.6.2",
     "playwright": "^1.55.0"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "pt.miguelreis.facebookpublisher",
+    "productName": "Facebook Auto Publisher",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!dist/**"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "AMREIS1978",
+        "repo": "loto.ai"
+      }
+    ]
   }
 }
