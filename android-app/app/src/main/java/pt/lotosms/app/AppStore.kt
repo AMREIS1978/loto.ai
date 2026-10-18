@@ -1,0 +1,62 @@
+package pt.lotosms.app
+
+import android.content.Context
+import org.json.JSONArray
+import org.json.JSONObject
+
+class AppStore(context: Context) {
+    private val prefs = context.getSharedPreferences("lotosms", Context.MODE_PRIVATE)
+
+    fun saveGroups(groups: List<SmsGroup>) {
+        val arr = JSONArray()
+        groups.forEach { group ->
+            arr.put(JSONObject().apply {
+                put("id", group.id)
+                put("name", group.name)
+                put("enabled", group.enabled)
+                put("numbers", JSONArray(group.numbers))
+            })
+        }
+        prefs.edit().putString("groups", arr.toString()).apply()
+    }
+
+    fun loadGroups(): List<SmsGroup> {
+        val raw = prefs.getString("groups", null) ?: return listOf(
+            SmsGroup("familia", "Família", listOf(), true),
+            SmsGroup("amigos", "Amigos", listOf(), true)
+        )
+        val arr = JSONArray(raw)
+        return (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            val nums = o.getJSONArray("numbers")
+            SmsGroup(
+                id = o.getString("id"),
+                name = o.getString("name"),
+                numbers = (0 until nums.length()).map { nums.getString(it) },
+                enabled = o.optBoolean("enabled", true)
+            )
+        }
+    }
+
+    fun isAutomaticEnabled() = prefs.getBoolean("auto_enabled", false)
+    fun setAutomaticEnabled(value: Boolean) = prefs.edit().putBoolean("auto_enabled", value).apply()
+
+    fun selectedGroupIds(): Set<String> = prefs.getStringSet("selected_groups", emptySet()) ?: emptySet()
+    fun setSelectedGroupIds(ids: Set<String>) = prefs.edit().putStringSet("selected_groups", ids).apply()
+
+    fun hasProcessed(drawId: String): Boolean = prefs.getBoolean("draw_$drawId", false)
+    fun markProcessed(drawId: String) = prefs.edit().putBoolean("draw_$drawId", true).apply()
+
+    fun addHistory(entry: HistoryEntry) {
+        val existing = prefs.getString("history", "[]") ?: "[]"
+        val arr = JSONArray(existing)
+        arr.put(JSONObject().apply {
+            put("timestamp", entry.timestamp)
+            put("title", entry.title)
+            put("recipients", entry.recipients)
+            put("success", entry.success)
+            put("failed", entry.failed)
+        })
+        prefs.edit().putString("history", arr.toString()).apply()
+    }
+}
