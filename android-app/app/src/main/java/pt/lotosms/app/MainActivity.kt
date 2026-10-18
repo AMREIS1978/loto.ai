@@ -247,9 +247,16 @@ fun BulkSendScreen(context: Context) {
     var message by remember { mutableStateOf("") }
     val selected = remember { mutableStateMapOf<String, Boolean>() }
     var status by remember { mutableStateOf("") }
+    var channel by remember { mutableStateOf("SMS") }
 
     LazyColumn(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Envio em massa", style = MaterialTheme.typography.headlineMedium) }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = channel == "SMS", onClick = { channel = "SMS" }, label = { Text("SMS") })
+                FilterChip(selected = channel == "WhatsApp", onClick = { channel = "WhatsApp" }, label = { Text("WhatsApp") })
+            }
+        }
         item { OutlinedTextField(message, { message = it }, label = { Text("Mensagem") }, modifier = Modifier.fillMaxWidth(), minLines = 4) }
         items(groups, key = { it.id }) { group ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -260,11 +267,20 @@ fun BulkSendScreen(context: Context) {
         item {
             val recipients = groups.filter { selected[it.id] == true }.flatMap { it.numbers }.distinctBy { normalizePhone(it) }
             Text("${recipients.size} destinatários únicos")
-            Button(enabled = message.isNotBlank() && recipients.isNotEmpty(), onClick = {
-                val result = SmsEngine.sendMany(context, recipients, message)
-                store.addHistory(HistoryEntry(System.currentTimeMillis(), "Envio em massa", recipients.size, result.success, result.failed))
-                status = "${result.success} preparados · ${result.failed} falharam"
-            }) { Text("Enviar aos grupos selecionados") }
+            Button(enabled = message.isNotBlank() && (channel == "WhatsApp" || recipients.isNotEmpty()), onClick = {
+                if (channel == "SMS") {
+                    val result = SmsEngine.sendMany(context, recipients, message)
+                    store.addHistory(HistoryEntry(System.currentTimeMillis(), "Envio em massa SMS", recipients.size, result.success, result.failed))
+                    status = "${result.success} preparados · ${result.failed} falharam"
+                } else {
+                    val ok = WhatsAppEngine.shareMessage(context, message)
+                    store.addHistory(HistoryEntry(System.currentTimeMillis(), "Envio WhatsApp", recipients.size, if (ok) 1 else 0, if (ok) 0 else 1))
+                    status = if (ok) "WhatsApp aberto com a mensagem preparada" else "Não foi possível abrir o WhatsApp"
+                }
+            }) { Text(if (channel == "SMS") "Enviar SMS aos grupos" else "Abrir WhatsApp") }
+            if (channel == "WhatsApp") {
+                Text("No WhatsApp normal, a app prepara a mensagem mas o WhatsApp é que controla a escolha do chat/grupo e o envio final.", style = MaterialTheme.typography.bodySmall)
+            }
             if (status.isNotBlank()) Text(status)
         }
     }
@@ -285,6 +301,10 @@ fun SettingsScreen(activity: MainActivity) {
         Card { Column(Modifier.padding(16.dp)) {
             Text("Resultados automáticos", style = MaterialTheme.typography.titleLarge)
             Text("O serviço de resultados funciona em segundo plano por push. Não é necessário manter a aplicação aberta.")
+        }}
+        Card { Column(Modifier.padding(16.dp)) {
+            Text("WhatsApp", style = MaterialTheme.typography.titleLarge)
+            Text("Pode preparar mensagens para WhatsApp. Envio automático real exige a WhatsApp Business Platform/API.")
         }}
         if (!ContactHelper.hasPermission(activity)) Button(onClick = { activity.requestContacts() }) { Text("Autorizar contactos") }
         Text("Podem aplicar-se custos do seu tarifário móvel. Utilize apenas destinatários que tenham consentido receber estas mensagens.")
