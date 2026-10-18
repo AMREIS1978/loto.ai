@@ -1,9 +1,12 @@
 package pt.lotosms.app
 
+import android.Manifest
 import android.content.Context
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,9 +17,30 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 class MainActivity : ComponentActivity() {
+    private val contactsPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (Build.VERSION.SDK_INT >= 33) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        val sendNow = intent?.getBooleanExtra("send_now", false) == true
+        if (sendNow) {
+            val message = intent?.getStringExtra("message").orEmpty()
+            val recipients = intent?.getStringArrayListExtra("recipients").orEmpty()
+            if (message.isNotBlank() && recipients.isNotEmpty()) {
+                SmsEngine.sendMany(this, recipients, message)
+            }
+        }
+
         setContent { MaterialTheme { LotoSmsApp(this) } }
+    }
+
+    fun requestContacts() {
+        contactsPermission.launch(Manifest.permission.READ_CONTACTS)
     }
 }
 
@@ -42,7 +66,7 @@ fun LotoSmsApp(activity: MainActivity) {
                 1 -> GamesScreen()
                 2 -> GroupsScreen(activity)
                 3 -> HistoryScreen()
-                else -> SettingsScreen()
+                else -> SettingsScreen(activity)
             }
         }
     }
@@ -56,15 +80,20 @@ fun HomeScreen(context: Context) {
         Text("Resultados e mensagens", style = MaterialTheme.typography.headlineMedium)
         Card { Column(Modifier.padding(18.dp)) {
             Text("Deteção automática", style = MaterialTheme.typography.titleLarge)
-            Text("Quando a API confirmar um novo resultado, a app prepara a mensagem. O envio é confirmado na aplicação de SMS do telemóvel.")
+            Text("A API deteta a nova chave, prepara tudo e mostra apenas: ‘Chave disponível — Enviar?’")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(checked = auto, onCheckedChange = { auto = it; store.setAutomaticEnabled(it) })
                 Spacer(Modifier.width(8.dp)); Text(if (auto) "Ligado" else "Desligado")
             }
         }}
         Card { Column(Modifier.padding(18.dp)) {
-            Text("Sem app SMS predefinida", style = MaterialTheme.typography.titleLarge)
-            Text("LotoSMS já não precisa de substituir a sua aplicação de mensagens. Usa o compositor SMS do Android para enviar pelo seu número.")
+            Text("Contactos", style = MaterialTheme.typography.titleLarge)
+            Text("Pode autorizar o acesso aos contactos para criar grupos rapidamente.")
+            if (!ContactHelper.hasPermission(context) && context is MainActivity) {
+                Button(onClick = { context.requestContacts() }) { Text("Permitir contactos") }
+            } else {
+                Text("Acesso aos contactos autorizado")
+            }
         }}
     }
 }
@@ -88,6 +117,19 @@ fun GroupsScreen(context: Context) {
 
     LazyColumn(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Grupos", style = MaterialTheme.typography.headlineMedium) }
+        item {
+            if (ContactHelper.hasPermission(context)) {
+                Button(onClick = {
+                    val contacts = ContactHelper.loadPhoneContacts(context)
+                    if (contacts.isNotEmpty()) {
+                        val imported = SmsGroup("contactos", "Contactos", contacts.map { it.number }, true)
+                        groups = groups.filterNot { it.id == "contactos" } + imported
+                        store.saveGroups(groups)
+                        store.setSelectedGroupIds(groups.map { it.id }.toSet())
+                    }
+                }) { Text("Importar contactos") }
+            }
+        }
         items(groups) { group ->
             Card { Column(Modifier.padding(16.dp)) {
                 Text(group.name, style = MaterialTheme.typography.titleLarge)
@@ -107,7 +149,11 @@ fun GroupsScreen(context: Context) {
             Button(onClick = {
                 if (name.isNotBlank()) {
                     val next = groups + SmsGroup(System.currentTimeMillis().toString(), name.trim(), numbers.split(",").map { it.trim() }.filter { it.isNotEmpty() }, true)
-                    groups = next; store.saveGroups(next); name = ""; numbers = ""
+                    groups = next
+                    store.saveGroups(next)
+                    store.setSelectedGroupIds(next.map { it.id }.toSet())
+                    name = ""
+                    numbers = ""
                 }
             }) { Text("Criar grupo") }
         }
@@ -123,13 +169,16 @@ fun HistoryScreen() {
 }
 
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(activity: MainActivity) {
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Definições", style = MaterialTheme.typography.headlineMedium)
         Card { Column(Modifier.padding(16.dp)) {
             Text("Envio por SMS", style = MaterialTheme.typography.titleLarge)
-            Text("Não é necessário tornar LotoSMS a aplicação de SMS predefinida. A mensagem abre na aplicação SMS já instalada no telemóvel para confirmação.")
+            Text("A app prepara automaticamente a mensagem e os destinatários. Não precisa ser a app SMS predefinida.")
         }}
+        if (!ContactHelper.hasPermission(activity)) {
+            Button(onClick = { activity.requestContacts() }) { Text("Autorizar contactos") }
+        }
         Text("Podem aplicar-se custos do seu tarifário móvel. Só deve adicionar destinatários que tenham consentido receber estas mensagens.")
     }
 }
