@@ -1,13 +1,9 @@
 package pt.lotosms.app
 
-import android.Manifest
-import android.app.role.RoleManager
 import android.content.Context
 import android.os.Bundle
-import android.provider.Telephony
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,24 +14,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 class MainActivity : ComponentActivity() {
-    private val smsPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
-    private val roleLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { MaterialTheme { LotoSmsApp(this) } }
-    }
-
-    fun requestSmsRole() {
-        val roleManager = getSystemService(RoleManager::class.java)
-        if (roleManager.isRoleAvailable(RoleManager.ROLE_SMS) && !roleManager.isRoleHeld(RoleManager.ROLE_SMS)) {
-            roleLauncher.launch(roleManager.createRequestRoleIntent(RoleManager.ROLE_SMS))
-        }
-    }
-
-    fun requestSmsPermissions() {
-        if (Telephony.Sms.getDefaultSmsPackage(this) != packageName) return
-        smsPermissions.launch(arrayOf(Manifest.permission.SEND_SMS, Manifest.permission.RECEIVE_SMS, Manifest.permission.READ_SMS))
     }
 }
 
@@ -61,7 +42,7 @@ fun LotoSmsApp(activity: MainActivity) {
                 1 -> GamesScreen()
                 2 -> GroupsScreen(activity)
                 3 -> HistoryScreen()
-                else -> SettingsScreen(activity)
+                else -> SettingsScreen()
             }
         }
     }
@@ -74,16 +55,16 @@ fun HomeScreen(context: Context) {
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Resultados e mensagens", style = MaterialTheme.typography.headlineMedium)
         Card { Column(Modifier.padding(18.dp)) {
-            Text("Envio automático", style = MaterialTheme.typography.titleLarge)
-            Text("Quando a API confirmar um novo resultado, envia pelo seu SIM apenas para os grupos escolhidos.")
+            Text("Deteção automática", style = MaterialTheme.typography.titleLarge)
+            Text("Quando a API confirmar um novo resultado, a app prepara a mensagem. O envio é confirmado na aplicação de SMS do telemóvel.")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(checked = auto, onCheckedChange = { auto = it; store.setAutomaticEnabled(it) })
                 Spacer(Modifier.width(8.dp)); Text(if (auto) "Ligado" else "Desligado")
             }
         }}
         Card { Column(Modifier.padding(18.dp)) {
-            Text("Segurança", style = MaterialTheme.typography.titleLarge)
-            Text("O automatismo só funciona se LotoSMS estiver definida como app SMS predefinida. A lista de contactos permanece no telefone.")
+            Text("Sem app SMS predefinida", style = MaterialTheme.typography.titleLarge)
+            Text("LotoSMS já não precisa de substituir a sua aplicação de mensagens. Usa o compositor SMS do Android para enviar pelo seu número.")
         }}
     }
 }
@@ -113,8 +94,8 @@ fun GroupsScreen(context: Context) {
                 Text("${group.numbers.size} destinatários")
                 OutlinedButton(onClick = {
                     val result = SmsEngine.sendMany(context, group.numbers.distinct(), message)
-                    store.addHistory(HistoryEntry(System.currentTimeMillis(), "Mensagem rápida — ${group.name}", group.numbers.distinct().size, result.success, result.failed))
-                }) { Text("Enviar agora") }
+                    store.addHistory(HistoryEntry(System.currentTimeMillis(), "Mensagem preparada — ${group.name}", group.numbers.distinct().size, result.success, result.failed))
+                }) { Text("Preparar e enviar") }
             }}
         }
         item {
@@ -137,21 +118,18 @@ fun GroupsScreen(context: Context) {
 fun HistoryScreen() {
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Histórico", style = MaterialTheme.typography.headlineMedium)
-        Text("O histórico técnico é guardado localmente. Na próxima versão este ecrã apresentará cada envio, estado e destinatários falhados.")
+        Text("O histórico técnico é guardado localmente.")
     }
 }
 
 @Composable
-fun SettingsScreen(activity: MainActivity) {
-    val isDefault = Telephony.Sms.getDefaultSmsPackage(activity) == activity.packageName
+fun SettingsScreen() {
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Definições", style = MaterialTheme.typography.headlineMedium)
         Card { Column(Modifier.padding(16.dp)) {
-            Text("App SMS predefinida", style = MaterialTheme.typography.titleLarge)
-            Text(if (isDefault) "Ativa" else "Necessária para envio automático pelo seu próprio número.")
-            Button(onClick = { activity.requestSmsRole() }) { Text("Definir como app SMS") }
-            if (isDefault) OutlinedButton(onClick = { activity.requestSmsPermissions() }) { Text("Autorizar SMS") }
+            Text("Envio por SMS", style = MaterialTheme.typography.titleLarge)
+            Text("Não é necessário tornar LotoSMS a aplicação de SMS predefinida. A mensagem abre na aplicação SMS já instalada no telemóvel para confirmação.")
         }}
-        Text("Ao ativar envios automáticos, podem aplicar-se custos do seu tarifário móvel. Só deve adicionar destinatários que tenham consentido receber estas mensagens.")
+        Text("Podem aplicar-se custos do seu tarifário móvel. Só deve adicionar destinatários que tenham consentido receber estas mensagens.")
     }
 }
