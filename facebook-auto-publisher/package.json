@@ -1,0 +1,15 @@
+{
+  "name": "facebook-auto-publisher",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Aplicação local para automatizar a publicação numa Página Facebook através de cliques no navegador.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "install-browser": "playwright install chromium"
+  },
+  "dependencies": {
+    "electron": "^38.0.0",
+    "playwright": "^1.55.0"
+  }
+}
