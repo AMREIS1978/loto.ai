@@ -48,14 +48,19 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun LotoSmsApp(activity: MainActivity) {
     var tab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Início", "Jogos", "Grupos", "Histórico", "Definições")
+    val tabs = listOf("Início", "Jogos", "Grupos", "Em massa", "Histórico", "Definições")
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("LotoSMS") }) },
         bottomBar = {
             NavigationBar {
                 tabs.forEachIndexed { index, label ->
-                    NavigationBarItem(selected = tab == index, onClick = { tab = index }, icon = { Text((index + 1).toString()) }, label = { Text(label) })
+                    NavigationBarItem(
+                        selected = tab == index,
+                        onClick = { tab = index },
+                        icon = { Text((index + 1).toString()) },
+                        label = { Text(label) }
+                    )
                 }
             }
         }
@@ -65,7 +70,8 @@ fun LotoSmsApp(activity: MainActivity) {
                 0 -> HomeScreen(activity)
                 1 -> GamesScreen()
                 2 -> GroupsScreen(activity)
-                3 -> HistoryScreen()
+                3 -> BulkScreen(activity)
+                4 -> HistoryScreen()
                 else -> SettingsScreen(activity)
             }
         }
@@ -79,8 +85,8 @@ fun HomeScreen(context: Context) {
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Resultados e mensagens", style = MaterialTheme.typography.headlineMedium)
         Card { Column(Modifier.padding(18.dp)) {
-            Text("Deteção automática", style = MaterialTheme.typography.titleLarge)
-            Text("A API deteta a nova chave, prepara tudo e mostra apenas: ‘Chave disponível — Enviar?’")
+            Text("Resultados automáticos", style = MaterialTheme.typography.titleLarge)
+            Text("A API deteta uma nova chave e associa automaticamente a mensagem aos grupos selecionados.")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(checked = auto, onCheckedChange = { auto = it; store.setAutomaticEnabled(it) })
                 Spacer(Modifier.width(8.dp)); Text(if (auto) "Ligado" else "Desligado")
@@ -88,7 +94,7 @@ fun HomeScreen(context: Context) {
         }}
         Card { Column(Modifier.padding(18.dp)) {
             Text("Contactos", style = MaterialTheme.typography.titleLarge)
-            Text("Pode autorizar o acesso aos contactos para criar grupos rapidamente.")
+            Text("Autorize o acesso aos contactos para criar e gerir grupos rapidamente.")
             if (!ContactHelper.hasPermission(context) && context is MainActivity) {
                 Button(onClick = { context.requestContacts() }) { Text("Permitir contactos") }
             } else {
@@ -103,7 +109,18 @@ fun GamesScreen() {
     val games = listOf("Euromilhões", "Totoloto", "Joker", "EuroDreams")
     LazyColumn(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { Text("Jogos", style = MaterialTheme.typography.headlineMedium) }
-        items(games) { game -> Card { Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text(game); Switch(checked = true, onCheckedChange = {}) } } }
+        items(games) { game ->
+            Card {
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(game)
+                    Switch(checked = true, onCheckedChange = {})
+                }
+            }
+        }
     }
 }
 
@@ -135,9 +152,18 @@ fun GroupsScreen(context: Context) {
                 Text(group.name, style = MaterialTheme.typography.titleLarge)
                 Text("${group.numbers.size} destinatários")
                 OutlinedButton(onClick = {
-                    val result = SmsEngine.sendMany(context, group.numbers.distinct(), message)
-                    store.addHistory(HistoryEntry(System.currentTimeMillis(), "Mensagem preparada — ${group.name}", group.numbers.distinct().size, result.success, result.failed))
-                }) { Text("Preparar e enviar") }
+                    val unique = group.numbers.distinct()
+                    val result = SmsEngine.sendMany(context, unique, message)
+                    store.addHistory(
+                        HistoryEntry(
+                            System.currentTimeMillis(),
+                            "Mensagem preparada — ${group.name}",
+                            unique.size,
+                            result.success,
+                            result.failed
+                        )
+                    )
+                }) { Text("Enviar a este grupo") }
             }}
         }
         item {
@@ -148,7 +174,12 @@ fun GroupsScreen(context: Context) {
             OutlinedTextField(value = message, onValueChange = { message = it }, label = { Text("Mensagem rápida") }, modifier = Modifier.fillMaxWidth())
             Button(onClick = {
                 if (name.isNotBlank()) {
-                    val next = groups + SmsGroup(System.currentTimeMillis().toString(), name.trim(), numbers.split(",").map { it.trim() }.filter { it.isNotEmpty() }, true)
+                    val next = groups + SmsGroup(
+                        System.currentTimeMillis().toString(),
+                        name.trim(),
+                        numbers.split(",").map { it.trim() }.filter { it.isNotEmpty() },
+                        true
+                    )
                     groups = next
                     store.saveGroups(next)
                     store.setSelectedGroupIds(next.map { it.id }.toSet())
@@ -156,6 +187,75 @@ fun GroupsScreen(context: Context) {
                     numbers = ""
                 }
             }) { Text("Criar grupo") }
+        }
+    }
+}
+
+@Composable
+fun BulkScreen(context: Context) {
+    val store = remember { AppStore(context) }
+    val groups = remember { store.loadGroups() }
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    var message by remember { mutableStateOf("") }
+
+    val recipients = groups
+        .filter { selected.contains(it.id) }
+        .flatMap { it.numbers }
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .distinct()
+
+    LazyColumn(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Text("Envio em massa", style = MaterialTheme.typography.headlineMedium)
+            Text("Selecione um ou vários grupos. Números repetidos são removidos automaticamente.")
+        }
+        items(groups) { group ->
+            Card {
+                Row(
+                    Modifier.fillMaxWidth().padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = selected.contains(group.id),
+                        onCheckedChange = { checked ->
+                            selected = if (checked) selected + group.id else selected - group.id
+                        }
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(group.name, style = MaterialTheme.typography.titleMedium)
+                        Text("${group.numbers.size} contactos")
+                    }
+                }
+            }
+        }
+        item {
+            OutlinedTextField(
+                value = message,
+                onValueChange = { message = it },
+                label = { Text("Mensagem") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 4
+            )
+            Spacer(Modifier.height(8.dp))
+            Text("${recipients.size} destinatários únicos")
+            Button(
+                enabled = message.isNotBlank() && recipients.isNotEmpty(),
+                onClick = {
+                    val result = SmsEngine.sendMany(context, recipients, message)
+                    store.addHistory(
+                        HistoryEntry(
+                            System.currentTimeMillis(),
+                            "Envio em massa",
+                            recipients.size,
+                            result.success,
+                            result.failed
+                        )
+                    )
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Preparar envio em massa") }
         }
     }
 }
@@ -173,12 +273,12 @@ fun SettingsScreen(activity: MainActivity) {
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Definições", style = MaterialTheme.typography.headlineMedium)
         Card { Column(Modifier.padding(16.dp)) {
-            Text("Envio por SMS", style = MaterialTheme.typography.titleLarge)
-            Text("A app prepara automaticamente a mensagem e os destinatários. Não precisa ser a app SMS predefinida.")
+            Text("Mensagens", style = MaterialTheme.typography.titleLarge)
+            Text("Resultados automáticos e envio em massa usam os grupos configurados na app.")
         }}
         if (!ContactHelper.hasPermission(activity)) {
             Button(onClick = { activity.requestContacts() }) { Text("Autorizar contactos") }
         }
-        Text("Podem aplicar-se custos do seu tarifário móvel. Só deve adicionar destinatários que tenham consentido receber estas mensagens.")
+        Text("Podem aplicar-se custos do seu tarifário móvel. Utilize apenas contactos que tenham consentido receber estas mensagens.")
     }
 }
