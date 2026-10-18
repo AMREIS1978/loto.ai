@@ -1,34 +1,25 @@
 package pt.lotosms.app
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
-import android.provider.Telephony
-import android.telephony.SmsManager
-import androidx.core.content.ContextCompat
+import android.content.Intent
+import android.net.Uri
 
 object SmsEngine {
-    fun canSend(context: Context): Boolean {
-        val defaultPackage = Telephony.Sms.getDefaultSmsPackage(context)
-        val permission = ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
-        return defaultPackage == context.packageName && permission
-    }
-
     fun sendMany(context: Context, recipients: List<String>, message: String): SendResult {
-        if (!canSend(context)) return SendResult(0, recipients.size)
-        val manager = context.getSystemService(SmsManager::class.java)
-        var ok = 0
-        var failed = 0
-        recipients.distinct().forEach { phone ->
-            try {
-                val parts = manager.divideMessage(message)
-                if (parts.size > 1) manager.sendMultipartTextMessage(phone, null, parts, null, null)
-                else manager.sendTextMessage(phone, null, message, null, null)
-                ok++
-            } catch (_: Exception) {
-                failed++
+        val uniqueRecipients = recipients.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        if (uniqueRecipients.isEmpty()) return SendResult(0, 0)
+
+        return try {
+            val address = uniqueRecipients.joinToString(";")
+            val intent = Intent(Intent.ACTION_SENDTO).apply {
+                data = Uri.parse("smsto:$address")
+                putExtra("sms_body", message)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
+            context.startActivity(intent)
+            SendResult(uniqueRecipients.size, 0)
+        } catch (_: Exception) {
+            SendResult(0, uniqueRecipients.size)
         }
-        return SendResult(ok, failed)
     }
 }
