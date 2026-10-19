@@ -8,21 +8,49 @@ object Automation {
         if (!store.isAutomaticEnabled()) return
         if (store.hasProcessed(payload.drawId)) return
 
-        val selected = store.selectedGroupIds()
-        val groups = store.loadGroups().filter { it.enabled && selected.contains(it.id) }
-        val recipients = groups.flatMap { it.numbers }.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        val gameSelected = store.selectedGames().any { selected ->
+            normalizeGame(selected) == normalizeGame(payload.game) ||
+                normalizeGame(selected) == normalizeGame(payload.title)
+        }
+        if (!gameSelected) return
+
+        val selectedGroups = store.selectedGroupIds()
+        val groups = store.loadGroups().filter { group ->
+            group.enabled && selectedGroups.contains(group.id)
+        }
+
+        val recipients = groups
+            .flatMap { it.numbers }
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinctBy { normalizePhone(it) }
+
         if (recipients.isEmpty()) return
 
         val result = SmsEngine.sendMany(context, recipients, payload.message)
-        if (result.success > 0) store.markProcessed(payload.drawId)
+
+        if (result.success > 0) {
+            store.markProcessed(payload.drawId)
+        }
+
         store.addHistory(
             HistoryEntry(
                 timestamp = System.currentTimeMillis(),
-                title = payload.title,
+                title = "${payload.title} — envio automático",
                 recipients = recipients.size,
                 success = result.success,
                 failed = result.failed
             )
         )
     }
+
+    private fun normalizePhone(value: String): String = value.filter { it.isDigit() || it == '+' }
+
+    private fun normalizeGame(value: String): String = value
+        .lowercase()
+        .replace("õ", "o")
+        .replace("ó", "o")
+        .replace("é", "e")
+        .replace(" ", "")
+        .replace("-", "")
 }
