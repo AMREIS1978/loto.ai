@@ -1,0 +1,7 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lotosms-api",
+  "main": "cloudflare-worker/src/index.js",
+  "compatibility_date": "2026-10-19",
+  "workers_dev": true
+}
