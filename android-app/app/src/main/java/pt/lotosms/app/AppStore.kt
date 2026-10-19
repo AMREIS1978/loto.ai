@@ -44,6 +44,13 @@ class AppStore(context: Context) {
     fun selectedGroupIds(): Set<String> = prefs.getStringSet("selected_groups", emptySet()) ?: emptySet()
     fun setSelectedGroupIds(ids: Set<String>) = prefs.edit().putStringSet("selected_groups", ids).apply()
 
+    fun selectedGames(): Set<String> = prefs.getStringSet(
+        "selected_games",
+        setOf("Euromilhões", "Totoloto", "EuroDreams")
+    ) ?: setOf("Euromilhões", "Totoloto", "EuroDreams")
+
+    fun setSelectedGames(games: Set<String>) = prefs.edit().putStringSet("selected_games", games).apply()
+
     fun hasProcessed(drawId: String): Boolean = prefs.getBoolean("draw_$drawId", false)
     fun markProcessed(drawId: String) = prefs.edit().putBoolean("draw_$drawId", true).apply()
 
