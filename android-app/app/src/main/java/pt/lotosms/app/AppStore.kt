@@ -38,9 +38,10 @@ class AppStore(context: Context) {
         }
     }
 
-    fun isAutomaticEnabled() = prefs.getBoolean("auto_enabled", false)
+    fun isAutomaticEnabled() = prefs.getBoolean("auto_enabled", true)
     fun setAutomaticEnabled(value: Boolean) = prefs.edit().putBoolean("auto_enabled", value).apply()
 
+    // Mantido para compatibilidade com versões anteriores.
     fun selectedGroupIds(): Set<String> = prefs.getStringSet("selected_groups", emptySet()) ?: emptySet()
     fun setSelectedGroupIds(ids: Set<String>) = prefs.edit().putStringSet("selected_groups", ids).apply()
 
@@ -50,6 +51,24 @@ class AppStore(context: Context) {
     ) ?: setOf("Euromilhões", "Totoloto", "EuroDreams")
 
     fun setSelectedGames(games: Set<String>) = prefs.edit().putStringSet("selected_games", games).apply()
+
+    fun groupIdsForGame(game: String): Set<String> {
+        val key = "game_groups_${gameKey(game)}"
+        if (prefs.contains(key)) {
+            return prefs.getStringSet(key, emptySet()) ?: emptySet()
+        }
+
+        // Migração suave: numa instalação existente, usa a seleção global anterior.
+        val legacy = selectedGroupIds()
+        if (legacy.isNotEmpty()) return legacy
+
+        // Numa instalação nova, associa por defeito todos os grupos ativos.
+        return loadGroups().filter { it.enabled }.map { it.id }.toSet()
+    }
+
+    fun setGroupIdsForGame(game: String, ids: Set<String>) {
+        prefs.edit().putStringSet("game_groups_${gameKey(game)}", ids).apply()
+    }
 
     fun hasProcessed(drawId: String): Boolean = prefs.getBoolean("draw_$drawId", false)
     fun markProcessed(drawId: String) = prefs.edit().putBoolean("draw_$drawId", true).apply()
@@ -66,4 +85,12 @@ class AppStore(context: Context) {
         })
         prefs.edit().putString("history", arr.toString()).apply()
     }
+
+    private fun gameKey(value: String): String = value
+        .lowercase()
+        .replace("õ", "o")
+        .replace("ó", "o")
+        .replace("é", "e")
+        .replace(" ", "")
+        .replace("-", "")
 }
