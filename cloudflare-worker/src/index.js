@@ -10,6 +10,33 @@ const json = (data, status = 200) => new Response(JSON.stringify(data, null, 2),
 
 const memory = globalThis.__LOTOSMS_MEMORY__ || (globalThis.__LOTOSMS_MEMORY__ = new Map());
 
+const OFFICIAL_SOURCES = [
+  {
+    game: "euromilhoes",
+    title: "Euromilhões",
+    url: "https://www.jogossantacasa.pt/web/SCCartazResult/euroMilhoes",
+    numbers: 5,
+    extras: 2,
+    extraLabel: "estrelas"
+  },
+  {
+    game: "totoloto",
+    title: "Totoloto",
+    url: "https://www.jogossantacasa.pt/web/SCCartazResult/totolotoNew",
+    numbers: 5,
+    extras: 1,
+    extraLabel: "N.º da Sorte"
+  },
+  {
+    game: "eurodreams",
+    title: "EuroDreams",
+    url: "https://www.jogossantacasa.pt/web/ResultsBoard/EuroDreams",
+    numbers: 6,
+    extras: 1,
+    extraLabel: "N.º de Sonho"
+  }
+];
+
 function getStore(env) {
   return env.RESULTS_KV || null;
 }
@@ -37,7 +64,9 @@ async function readResult(env, key) {
 }
 
 async function notifyDevices(env, result) {
-  if (!env.FCM_ENDPOINT || !env.FCM_AUTH_TOKEN) return { sent: false, reason: "FCM not configured" };
+  if (!env.FCM_ENDPOINT || !env.FCM_AUTH_TOKEN) {
+    return { sent: false, reason: "FCM not configured" };
+  }
 
   const response = await fetch(env.FCM_ENDPOINT, {
     method: "POST",
@@ -56,6 +85,99 @@ async function notifyDevices(env, result) {
   return { sent: response.ok, status: response.status };
 }
 
+function htmlToText(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&ordm;/gi, "º")
+    .replace(/&[a-z]+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractOfficialResult(source, html) {
+  const text = htmlToText(html);
+  const contestMatch = text.match(/Sorteio:\s*([0-9]{2,3}\/20[0-9]{2})/i);
+  if (!contestMatch) return null;
+
+  const keyIndex = text.toLowerCase().indexOf("chave");
+  if (keyIndex < 0) return null;
+
+  const keyArea = text.slice(keyIndex, keyIndex + 500);
+  const count = source.numbers + source.extras;
+  const numberPattern = Array.from({ length: count }, () => "([0-9]{1,2})").join("\\s+");
+  const keyRegex = new RegExp(`${numberPattern.slice(0, source.numbers * 14)}\\s*\\+\\s*${Array.from({ length: source.extras }, () => "([0-9]{1,2})").join("\\s+")}`, "i");
+
+  // Regex explícita para manter a extração previsível em cada jogo.
+  let match;
+  if (source.game === "euromilhoes") {
+    match = keyArea.match(/([0-9]{1,2})\s+([0-9]{1,2})\s+([0-9]{1,2})\s+([0-9]{1,2})\s+([0-9]{1,2})\s*\+\s*([0-9]{1,2})\s+([0-9]{1,2})/);
+  } else if (source.game === "totoloto") {
+    match = keyArea.match(/([0-9]{1,2})\s+([0-9]{1,2})\s+([0-9]{1,2})\s+([0-9]{1,2})\s+([0-9]{1,2})\s*\+\s*([0-9]{1,2})/);
+  } else {
+    match = keyArea.match(/([0-9]{1,2})\s+([0-9]{1,2})\s+([0-9]{1,2})\s+([0-9]{1,2})\s+([0-9]{1,2})\s+([0-9]{1,2})\s*\+\s*([0-9]{1,2})/);
+  }
+  void keyRegex;
+  if (!match) return null;
+
+  const values = match.slice(1).map(Number);
+  const main = values.slice(0, source.numbers);
+  const extras = values.slice(source.numbers);
+  const contest = contestMatch[1];
+
+  return {
+    drawId: `${source.game}:${contest}`,
+    game: source.game,
+    title: `${source.title} — ${contest}`,
+    message: `${source.title} ${contest}: ${main.join(" ")} + ${extras.join(" ")}`,
+    numbers: main,
+    extras,
+    source: source.url,
+    publishedAt: new Date().toISOString()
+  };
+}
+
+async function refreshOfficialResults(env) {
+  const checks = [];
+
+  for (const source of OFFICIAL_SOURCES) {
+    try {
+      const response = await fetch(source.url, {
+        headers: {
+          "user-agent": "LotoSMS/1.0 (+result-checker)"
+        }
+      });
+
+      if (!response.ok) {
+        checks.push({ game: source.game, ok: false, status: response.status });
+        continue;
+      }
+
+      const result = extractOfficialResult(source, await response.text());
+      if (!result) {
+        checks.push({ game: source.game, ok: false, reason: "parse_failed" });
+        continue;
+      }
+
+      const existing = await readResult(env, `draw:${result.drawId}`);
+      if (existing) {
+        checks.push({ game: source.game, ok: true, duplicate: true, drawId: result.drawId });
+        continue;
+      }
+
+      await saveResult(env, result);
+      const notification = await notifyDevices(env, result);
+      checks.push({ game: source.game, ok: true, duplicate: false, drawId: result.drawId, notification });
+    } catch (error) {
+      checks.push({ game: source.game, ok: false, reason: String(error?.message || error) });
+    }
+  }
+
+  return checks;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -66,8 +188,9 @@ export default {
       return json({
         ok: true,
         service: "LotoSMS API",
-        version: "0.1.0",
-        storage: env.RESULTS_KV ? "KV" : "memory-fallback"
+        version: "0.2.0",
+        storage: env.RESULTS_KV ? "KV" : "memory-fallback",
+        officialPolling: "every 5 minutes"
       });
     }
 
@@ -75,6 +198,13 @@ export default {
       const game = url.searchParams.get("game")?.trim().toLowerCase();
       const result = await readResult(env, game ? `latest:${game}` : "latest:any");
       return result ? json(result) : json({ ok: true, result: null });
+    }
+
+    if (request.method === "POST" && url.pathname === "/refresh") {
+      if (env.PUBLISH_SECRET && request.headers.get("x-publish-secret") !== env.PUBLISH_SECRET) {
+        return json({ ok: false, error: "unauthorized" }, 401);
+      }
+      return json({ ok: true, checks: await refreshOfficialResults(env) });
     }
 
     if (request.method === "POST" && url.pathname === "/publish") {
@@ -118,7 +248,16 @@ export default {
     return json({
       ok: true,
       service: "LotoSMS API",
-      endpoints: ["GET /health", "GET /results/latest?game=euromilhoes", "POST /publish"]
+      endpoints: [
+        "GET /health",
+        "GET /results/latest?game=euromilhoes",
+        "POST /refresh",
+        "POST /publish"
+      ]
     });
+  },
+
+  async scheduled(_controller, env, ctx) {
+    ctx.waitUntil(refreshOfficialResults(env));
   }
 };
