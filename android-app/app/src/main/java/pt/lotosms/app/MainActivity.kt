@@ -15,18 +15,28 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import java.time.DayOfWeek
+import java.time.Duration
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     private val contactsPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    private val smsPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        if (!SmsEngine.canSend(this)) smsPermission.launch(Manifest.permission.SEND_SMS)
         setContent { MaterialTheme { LotoSmsApp(this) } }
     }
 
     fun requestContacts() = contactsPermission.launch(Manifest.permission.READ_CONTACTS)
+    fun requestSms() = smsPermission.launch(Manifest.permission.SEND_SMS)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,7 +62,7 @@ fun LotoSmsApp(activity: MainActivity) {
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
                 0 -> HomeScreen(activity)
-                1 -> GamesScreen()
+                1 -> GamesScreen(activity)
                 2 -> GroupsScreen(activity)
                 3 -> BulkSendScreen(activity)
                 4 -> HistoryScreen()
@@ -68,12 +78,17 @@ fun HomeScreen(context: Context) {
     var auto by remember { mutableStateOf(store.isAutomaticEnabled()) }
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Resultados e mensagens", style = MaterialTheme.typography.headlineMedium)
-        Card { Column(Modifier.padding(18.dp)) {
+        Card { Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Resultados automáticos", style = MaterialTheme.typography.titleLarge)
-            Text("A aplicação recebe automaticamente os novos resultados do servidor, mesmo sem estar aberta, e evita processar duas vezes o mesmo sorteio.")
+            Text("Quando sair uma nova chave de um jogo selecionado, a aplicação processa-a uma única vez e envia-a aos grupos escolhidos.")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(checked = auto, onCheckedChange = { auto = it; store.setAutomaticEnabled(it) })
                 Spacer(Modifier.width(8.dp)); Text(if (auto) "Ligado" else "Desligado")
+            }
+            if (!SmsEngine.canSend(context) && context is MainActivity) {
+                Button(onClick = { context.requestSms() }) { Text("Permitir envio de SMS") }
+            } else {
+                Text("Envio SMS autorizado", style = MaterialTheme.typography.bodySmall)
             }
         }}
         Card { Column(Modifier.padding(18.dp)) {
@@ -86,15 +101,102 @@ fun HomeScreen(context: Context) {
     }
 }
 
+data class LotteryGame(
+    val name: String,
+    val days: Set<DayOfWeek>,
+    val hour: Int = 20,
+    val minute: Int = 0
+)
+
+private val lisbonZone: ZoneId = ZoneId.of("Europe/Lisbon")
+
+private val lotteryGames = listOf(
+    LotteryGame("Euromilhões", setOf(DayOfWeek.TUESDAY, DayOfWeek.FRIDAY)),
+    LotteryGame("Totoloto", setOf(DayOfWeek.WEDNESDAY, DayOfWeek.SATURDAY)),
+    LotteryGame("Joker", setOf(DayOfWeek.WEDNESDAY, DayOfWeek.SATURDAY)),
+    LotteryGame("EuroDreams", setOf(DayOfWeek.MONDAY, DayOfWeek.THURSDAY))
+)
+
+private fun nextDraw(game: LotteryGame, now: ZonedDateTime): ZonedDateTime {
+    for (offset in 0..7) {
+        val date = now.toLocalDate().plusDays(offset.toLong())
+        if (date.dayOfWeek in game.days) {
+            val candidate = date.atTime(game.hour, game.minute).atZone(lisbonZone)
+            if (candidate.isAfter(now)) return candidate
+        }
+    }
+    return now.plusDays(7)
+}
+
+private fun countdownText(now: ZonedDateTime, target: ZonedDateTime): String {
+    val seconds = Duration.between(now, target).seconds.coerceAtLeast(0)
+    val days = seconds / 86_400
+    val hours = (seconds % 86_400) / 3_600
+    val minutes = (seconds % 3_600) / 60
+    val secs = seconds % 60
+    return if (days > 0) {
+        "%dd %02dh %02dm %02ds".format(days, hours, minutes, secs)
+    } else {
+        "%02dh %02dm %02ds".format(hours, minutes, secs)
+    }
+}
+
 @Composable
-fun GamesScreen() {
-    val games = listOf("Euromilhões", "Totoloto", "Joker", "EuroDreams")
-    LazyColumn(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { Text("Jogos", style = MaterialTheme.typography.headlineMedium) }
-        items(games) { game ->
-            Card { Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(game); Switch(checked = true, onCheckedChange = {})
-            }}
+fun GamesScreen(context: Context) {
+    val store = remember { AppStore(context) }
+    var selectedGames by remember { mutableStateOf(store.selectedGames()) }
+    var now by remember { mutableStateOf(ZonedDateTime.now(lisbonZone)) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = ZonedDateTime.now(lisbonZone)
+            delay(1_000)
+        }
+    }
+
+    val dateFormatter = remember {
+        DateTimeFormatter.ofPattern("EEE, dd MMM · HH:mm", Locale("pt", "PT"))
+    }
+
+    LazyColumn(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Text("Jogos", style = MaterialTheme.typography.headlineMedium)
+            Text("Escolha os sorteios a acompanhar. A contagem atualiza em tempo real.")
+        }
+        items(lotteryGames, key = { it.name }) { game ->
+            val enabled = selectedGames.contains(game.name)
+            val draw = nextDraw(game, now)
+            Card {
+                Column(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(game.name, style = MaterialTheme.typography.titleLarge)
+                            Text(
+                                if (enabled) "Próximo sorteio: ${dateFormatter.format(draw)}" else "Sorteio desativado",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        Switch(
+                            checked = enabled,
+                            onCheckedChange = { checked ->
+                                selectedGames = if (checked) selectedGames + game.name else selectedGames - game.name
+                                store.setSelectedGames(selectedGames)
+                            }
+                        )
+                    }
+                    if (enabled) {
+                        Text("Faltam", style = MaterialTheme.typography.labelLarge)
+                        Text(countdownText(now, draw), style = MaterialTheme.typography.headlineSmall)
+                    }
+                }
+            }
         }
     }
 }
@@ -126,6 +228,7 @@ fun GroupsScreen(activity: MainActivity) {
                             onCheckedChange = { enabled ->
                                 groups = groups.map { if (it.id == group.id) it.copy(enabled = enabled) else it }
                                 store.saveGroups(groups)
+                                store.setSelectedGroupIds(groups.filter { it.enabled }.map { it.id }.toSet())
                             }
                         )
                     }
@@ -269,9 +372,14 @@ fun BulkSendScreen(context: Context) {
             Text("${recipients.size} destinatários únicos")
             Button(enabled = message.isNotBlank() && (channel == "WhatsApp" || recipients.isNotEmpty()), onClick = {
                 if (channel == "SMS") {
-                    val result = SmsEngine.sendMany(context, recipients, message)
-                    store.addHistory(HistoryEntry(System.currentTimeMillis(), "Envio em massa SMS", recipients.size, result.success, result.failed))
-                    status = "${result.success} preparados · ${result.failed} falharam"
+                    if (!SmsEngine.canSend(context) && context is MainActivity) {
+                        context.requestSms()
+                        status = "Autorize o envio de SMS e volte a tocar em Enviar."
+                    } else {
+                        val result = SmsEngine.sendMany(context, recipients, message)
+                        store.addHistory(HistoryEntry(System.currentTimeMillis(), "Envio em massa SMS", recipients.size, result.success, result.failed))
+                        status = "${result.success} enviados · ${result.failed} falharam"
+                    }
                 } else {
                     val ok = WhatsAppEngine.shareMessage(context, message)
                     store.addHistory(HistoryEntry(System.currentTimeMillis(), "Envio WhatsApp", recipients.size, if (ok) 1 else 0, if (ok) 0 else 1))
@@ -279,7 +387,7 @@ fun BulkSendScreen(context: Context) {
                 }
             }) { Text(if (channel == "SMS") "Enviar SMS aos grupos" else "Abrir WhatsApp") }
             if (channel == "WhatsApp") {
-                Text("No WhatsApp normal, a app prepara a mensagem mas o WhatsApp é que controla a escolha do chat/grupo e o envio final.", style = MaterialTheme.typography.bodySmall)
+                Text("A mensagem fica pronta no WhatsApp; escolha o contacto ou grupo e confirme o envio.", style = MaterialTheme.typography.bodySmall)
             }
             if (status.isNotBlank()) Text(status)
         }
@@ -298,13 +406,15 @@ fun HistoryScreen() {
 fun SettingsScreen(activity: MainActivity) {
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Definições", style = MaterialTheme.typography.headlineMedium)
-        Card { Column(Modifier.padding(16.dp)) {
+        Card { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Resultados automáticos", style = MaterialTheme.typography.titleLarge)
-            Text("O serviço de resultados funciona em segundo plano por push. Não é necessário manter a aplicação aberta.")
+            Text("A app sincroniza novos resultados em segundo plano e evita repetir o mesmo sorteio.")
+            Text(if (SmsEngine.canSend(activity)) "SMS autorizado" else "Falta autorizar o envio de SMS")
+            if (!SmsEngine.canSend(activity)) Button(onClick = { activity.requestSms() }) { Text("Autorizar SMS") }
         }}
         Card { Column(Modifier.padding(16.dp)) {
             Text("WhatsApp", style = MaterialTheme.typography.titleLarge)
-            Text("Pode preparar mensagens para WhatsApp. Envio automático real exige a WhatsApp Business Platform/API.")
+            Text("A app prepara a mensagem e abre diretamente o WhatsApp normal ou Business que estiver instalado.")
         }}
         if (!ContactHelper.hasPermission(activity)) Button(onClick = { activity.requestContacts() }) { Text("Autorizar contactos") }
         Text("Podem aplicar-se custos do seu tarifário móvel. Utilize apenas destinatários que tenham consentido receber estas mensagens.")
