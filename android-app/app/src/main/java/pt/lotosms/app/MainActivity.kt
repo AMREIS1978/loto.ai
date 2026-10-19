@@ -80,15 +80,15 @@ fun HomeScreen(context: Context) {
         Text("Resultados e mensagens", style = MaterialTheme.typography.headlineMedium)
         Card { Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Resultados automáticos", style = MaterialTheme.typography.titleLarge)
-            Text("Quando sair uma nova chave de um jogo selecionado, a aplicação processa-a uma única vez e envia-a aos grupos escolhidos.")
+            Text("Quando sair uma nova chave, a LotoSMS identifica o jogo e envia automaticamente por SMS apenas aos grupos associados a esse sorteio.")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(checked = auto, onCheckedChange = { auto = it; store.setAutomaticEnabled(it) })
                 Spacer(Modifier.width(8.dp)); Text(if (auto) "Ligado" else "Desligado")
             }
             if (!SmsEngine.canSend(context) && context is MainActivity) {
-                Button(onClick = { context.requestSms() }) { Text("Permitir envio de SMS") }
+                Button(onClick = { context.requestSms() }) { Text("Permitir envio automático de SMS") }
             } else {
-                Text("Envio SMS autorizado", style = MaterialTheme.typography.bodySmall)
+                Text("Envio automático de SMS autorizado", style = MaterialTheme.typography.bodySmall)
             }
         }}
         Card { Column(Modifier.padding(18.dp)) {
@@ -105,7 +105,9 @@ data class LotteryGame(
     val name: String,
     val days: Set<DayOfWeek>,
     val hour: Int = 20,
-    val minute: Int = 0
+    val minute: Int = 0,
+    val available: Boolean = true,
+    val note: String = ""
 )
 
 private val lisbonZone: ZoneId = ZoneId.of("Europe/Lisbon")
@@ -113,8 +115,8 @@ private val lisbonZone: ZoneId = ZoneId.of("Europe/Lisbon")
 private val lotteryGames = listOf(
     LotteryGame("Euromilhões", setOf(DayOfWeek.TUESDAY, DayOfWeek.FRIDAY)),
     LotteryGame("Totoloto", setOf(DayOfWeek.WEDNESDAY, DayOfWeek.SATURDAY)),
-    LotteryGame("Joker", setOf(DayOfWeek.WEDNESDAY, DayOfWeek.SATURDAY)),
-    LotteryGame("EuroDreams", setOf(DayOfWeek.MONDAY, DayOfWeek.THURSDAY))
+    LotteryGame("EuroDreams", setOf(DayOfWeek.MONDAY, DayOfWeek.THURSDAY)),
+    LotteryGame("Joker", emptySet(), available = false, note = "Sorteio suspenso desde 2017")
 )
 
 private fun nextDraw(game: LotteryGame, now: ZonedDateTime): ZonedDateTime {
@@ -144,10 +146,12 @@ private fun countdownText(now: ZonedDateTime, target: ZonedDateTime): String {
 @Composable
 fun GamesScreen(context: Context) {
     val store = remember { AppStore(context) }
-    var selectedGames by remember { mutableStateOf(store.selectedGames()) }
+    val groups = remember { store.loadGroups() }
+    var selectedGames by remember { mutableStateOf(store.selectedGames() - "Joker") }
     var now by remember { mutableStateOf(ZonedDateTime.now(lisbonZone)) }
 
     LaunchedEffect(Unit) {
+        store.setSelectedGames(selectedGames)
         while (true) {
             now = ZonedDateTime.now(lisbonZone)
             delay(1_000)
@@ -160,16 +164,17 @@ fun GamesScreen(context: Context) {
 
     LazyColumn(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Text("Jogos", style = MaterialTheme.typography.headlineMedium)
-            Text("Escolha os sorteios a acompanhar. A contagem atualiza em tempo real.")
+            Text("Jogos e grupos", style = MaterialTheme.typography.headlineMedium)
+            Text("Ative o sorteio e escolha exatamente os grupos que recebem a chave por SMS.")
         }
         items(lotteryGames, key = { it.name }) { game ->
-            val enabled = selectedGames.contains(game.name)
-            val draw = nextDraw(game, now)
+            val enabled = game.available && selectedGames.contains(game.name)
+            var linkedGroupIds by remember(game.name) { mutableStateOf(store.groupIdsForGame(game.name)) }
+
             Card {
                 Column(
                     Modifier.fillMaxWidth().padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Row(
                         Modifier.fillMaxWidth(),
@@ -178,22 +183,62 @@ fun GamesScreen(context: Context) {
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text(game.name, style = MaterialTheme.typography.titleLarge)
-                            Text(
-                                if (enabled) "Próximo sorteio: ${dateFormatter.format(draw)}" else "Sorteio desativado",
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                            if (game.available) {
+                                val draw = nextDraw(game, now)
+                                Text(
+                                    if (enabled) "Próximo sorteio: ${dateFormatter.format(draw)}" else "Sorteio desativado",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            } else {
+                                Text(game.note, style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                         Switch(
                             checked = enabled,
+                            enabled = game.available,
                             onCheckedChange = { checked ->
                                 selectedGames = if (checked) selectedGames + game.name else selectedGames - game.name
                                 store.setSelectedGames(selectedGames)
                             }
                         )
                     }
+
                     if (enabled) {
+                        val draw = nextDraw(game, now)
                         Text("Faltam", style = MaterialTheme.typography.labelLarge)
                         Text(countdownText(now, draw), style = MaterialTheme.typography.headlineSmall)
+                        HorizontalDivider()
+                        Text("Enviar automaticamente para:", style = MaterialTheme.typography.titleMedium)
+
+                        val enabledGroups = groups.filter { it.enabled }
+                        if (enabledGroups.isEmpty()) {
+                            Text("Crie ou ative um grupo no separador Grupos.", style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            enabledGroups.forEach { group ->
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = linkedGroupIds.contains(group.id),
+                                        onCheckedChange = { checked ->
+                                            linkedGroupIds = if (checked) linkedGroupIds + group.id else linkedGroupIds - group.id
+                                            store.setGroupIdsForGame(game.name, linkedGroupIds)
+                                        }
+                                    )
+                                    Column {
+                                        Text(group.name)
+                                        Text("${group.numbers.size} contactos", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                            }
+                        }
+
+                        val linkedCount = groups.count { it.enabled && linkedGroupIds.contains(it.id) }
+                        Text(
+                            if (linkedCount > 0) "$linkedCount grupo(s) associado(s) a ${game.name}" else "Nenhum grupo associado — não serão enviados SMS deste sorteio.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                 }
             }
@@ -215,6 +260,7 @@ fun GroupsScreen(activity: MainActivity) {
                 Button(onClick = { creating = true }) { Text("Novo grupo") }
             }
         }
+        item { Text("Depois de criar os grupos, associe-os a cada sorteio no separador Jogos.") }
         if (!ContactHelper.hasPermission(activity)) {
             item { OutlinedButton(onClick = { activity.requestContacts() }) { Text("Dar acesso aos contactos") } }
         }
@@ -408,8 +454,8 @@ fun SettingsScreen(activity: MainActivity) {
         Text("Definições", style = MaterialTheme.typography.headlineMedium)
         Card { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Resultados automáticos", style = MaterialTheme.typography.titleLarge)
-            Text("A app sincroniza novos resultados em segundo plano e evita repetir o mesmo sorteio.")
-            Text(if (SmsEngine.canSend(activity)) "SMS autorizado" else "Falta autorizar o envio de SMS")
+            Text("A app verifica separadamente cada jogo ativo e envia a chave por SMS aos grupos associados.")
+            Text(if (SmsEngine.canSend(activity)) "SMS automático autorizado" else "Falta autorizar o envio automático de SMS")
             if (!SmsEngine.canSend(activity)) Button(onClick = { activity.requestSms() }) { Text("Autorizar SMS") }
         }}
         Card { Column(Modifier.padding(16.dp)) {
