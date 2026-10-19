@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
+        android:name=".LotoSmsApplication"
         android:theme="@style/Theme.LotoSMS"
         android:label="LotoSMS"
         android:allowBackup="false"
