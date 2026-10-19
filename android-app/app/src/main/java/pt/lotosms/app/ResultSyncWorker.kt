@@ -22,41 +22,57 @@ class ResultSyncWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
-            val connection = (URL("$API_BASE_URL/results/latest").openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 10_000
-                readTimeout = 10_000
-                setRequestProperty("Accept", "application/json")
-            }
+            val store = AppStore(applicationContext)
+            val selected = store.selectedGames()
+                .mapNotNull { gameSlug(it) }
+                .distinct()
 
-            val code = connection.responseCode
-            if (code !in 200..299) {
+            for (game in selected) {
+                val connection = (URL("$API_BASE_URL/results/latest?game=$game").openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 10_000
+                    readTimeout = 10_000
+                    setRequestProperty("Accept", "application/json")
+                }
+
+                val code = connection.responseCode
+                if (code !in 200..299) {
+                    connection.disconnect()
+                    continue
+                }
+
+                val body = connection.inputStream.bufferedReader().use { it.readText() }
                 connection.disconnect()
-                return@withContext Result.retry()
-            }
+                val json = JSONObject(body)
 
-            val body = connection.inputStream.bufferedReader().use { it.readText() }
-            connection.disconnect()
-            val json = JSONObject(body)
+                if (!json.has("drawId")) continue
 
-            if (!json.has("drawId")) return@withContext Result.success()
+                val drawId = json.optString("drawId")
+                val payloadGame = json.optString("game", game)
+                val title = json.optString("title", payloadGame)
+                val message = json.optString("message")
 
-            val drawId = json.optString("drawId")
-            val game = json.optString("game", "result")
-            val title = json.optString("title", game)
-            val message = json.optString("message")
-
-            if (drawId.isNotBlank() && message.isNotBlank()) {
-                Automation.onNewDraw(
-                    applicationContext,
-                    DrawPayload(drawId, game, title, message)
-                )
+                if (drawId.isNotBlank() && message.isNotBlank()) {
+                    Automation.onNewDraw(
+                        applicationContext,
+                        DrawPayload(drawId, payloadGame, title, message)
+                    )
+                }
             }
 
             Result.success()
         } catch (_: Exception) {
             Result.retry()
         }
+    }
+
+    private fun gameSlug(name: String): String? = when (
+        name.lowercase().replace("õ", "o").replace("ó", "o").replace("é", "e").replace(" ", "")
+    ) {
+        "euromilhoes" -> "euromilhoes"
+        "totoloto" -> "totoloto"
+        "eurodreams" -> "eurodreams"
+        else -> null
     }
 
     companion object {
