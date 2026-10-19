@@ -14,9 +14,11 @@ object Automation {
         }
         if (!gameSelected) return
 
-        val selectedGroups = store.selectedGroupIds()
+        val linkedGroupIds = store.groupIdsForGame(payload.game)
+        if (linkedGroupIds.isEmpty()) return
+
         val groups = store.loadGroups().filter { group ->
-            group.enabled && selectedGroups.contains(group.id)
+            group.enabled && linkedGroupIds.contains(group.id)
         }
 
         val recipients = groups
