@@ -27,6 +27,7 @@ class ResultSyncWorker(
                 .mapNotNull { gameSlug(it) }
                 .distinct()
 
+            var anyFailure = false
             for (game in selected) {
                 val connection = (URL("$API_BASE_URL/results/latest?game=$game").openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
@@ -38,21 +39,25 @@ class ResultSyncWorker(
                 val code = connection.responseCode
                 if (code !in 200..299) {
                     connection.disconnect()
-                    return@withContext Result.retry()
+                    anyFailure = true
+                    continue
                 }
 
                 val body = connection.inputStream.bufferedReader().use { it.readText() }
                 connection.disconnect()
                 val json = JSONObject(body)
 
-                if (!json.has("drawId")) return@withContext Result.retry()
+                if (!json.has("drawId")) continue // No result published for this game yet
 
                 val drawId = json.optString("drawId")
                 val payloadGame = json.optString("game", game)
                 val title = json.optString("title", payloadGame)
                 val message = json.optString("message")
 
-                if (drawId.isBlank() || message.isBlank()) return@withContext Result.retry()
+                if (drawId.isBlank() || message.isBlank()) {
+                    anyFailure = true
+                    continue
+                }
 
                 if (drawId.isNotBlank() && message.isNotBlank()) {
                     store.saveLatestResult(payloadGame, title, message)
@@ -63,7 +68,7 @@ class ResultSyncWorker(
                 }
             }
 
-            Result.success()
+            if (anyFailure) Result.retry() else Result.success()
         } catch (_: Exception) {
             Result.retry()
         }
