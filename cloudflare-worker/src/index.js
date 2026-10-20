@@ -206,7 +206,7 @@ export default {
     }
 
     if (request.method === "POST" && url.pathname === "/publish") {
-      if (env.PUBLISH_SECRET && request.headers.get("x-publish-secret") !== env.PUBLISH_SECRET) {
+      if (!env.PUBLISH_SECRET || request.headers.get("x-publish-secret") !== env.PUBLISH_SECRET) {
         return json({ ok: false, error: "unauthorized" }, 401);
       }
 
