@@ -185,6 +185,9 @@ async function refreshOfficialResults(env) {
 
       const existing = await readResult(env, `draw:${result.drawId}`);
       if (existing) {
+        if (existing.message !== result.message || existing.drawDate !== result.drawDate) {
+          await saveResult(env, result); // Refresh formatting without notifying a second time.
+        }
         checks.push({ game: source.game, ok: true, duplicate: true, drawId: result.drawId });
         continue;
       }
