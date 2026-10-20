@@ -54,7 +54,7 @@ jobs:
             exit 0
           fi
           printf '%s' "$KEYSTORE_B64" | base64 --decode > app/loto-release.jks
-          echo "LOTO_SIGNING_STORE_FILE=app/loto-release.jks" >> "$GITHUB_ENV"
+          echo "LOTO_SIGNING_STORE_FILE=loto-release.jks" >> "$GITHUB_ENV"
           echo "LOTO_SIGNING_STORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
           echo "LOTO_SIGNING_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
           echo "LOTO_SIGNING_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
