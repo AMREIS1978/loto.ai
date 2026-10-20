@@ -38,14 +38,14 @@ class ResultSyncWorker(
                 val code = connection.responseCode
                 if (code !in 200..299) {
                     connection.disconnect()
-                    continue
+                    return@withContext Result.retry()
                 }
 
                 val body = connection.inputStream.bufferedReader().use { it.readText() }
                 connection.disconnect()
                 val json = JSONObject(body)
 
-                if (!json.has("drawId")) continue
+                if (!json.has("drawId")) return@withContext Result.retry()
 
                 val drawId = json.optString("drawId")
                 val payloadGame = json.optString("game", game)
