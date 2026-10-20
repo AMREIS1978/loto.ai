@@ -41,6 +41,38 @@ jobs:
       - name: Compilar APK debug
         run: gradle assembleDebug --stacktrace
 
+      - name: Preparar assinatura estável
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE_B64: ${{ secrets.LOTO_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.LOTO_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.LOTO_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.LOTO_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "Assinatura de atualização não configurada; apenas APK de testes."
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > app/loto-release.jks
+          echo "LOTO_SIGNING_STORE_FILE=app/loto-release.jks" >> "$GITHUB_ENV"
+          echo "LOTO_SIGNING_STORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "LOTO_SIGNING_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "LOTO_SIGNING_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "LOTO_SIGNING_READY=true" >> "$GITHUB_ENV"
+
+      - name: Compilar APK de atualização assinada
+        if: env.LOTO_SIGNING_READY == 'true'
+        run: gradle assembleRelease --stacktrace
+
+      - name: Publicar APK de atualização
+        if: env.LOTO_SIGNING_READY == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: LotoAI-APK-Atualizacao
+          path: android-app/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
