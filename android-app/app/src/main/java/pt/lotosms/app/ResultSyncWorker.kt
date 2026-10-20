@@ -55,6 +55,7 @@ class ResultSyncWorker(
                 if (drawId.isBlank() || message.isBlank()) return@withContext Result.retry()
 
                 if (drawId.isNotBlank() && message.isNotBlank()) {
+                    store.saveLatestResult(payloadGame, title, message)
                     Automation.onNewDraw(
                         applicationContext,
                         DrawPayload(drawId, payloadGame, title, message)
