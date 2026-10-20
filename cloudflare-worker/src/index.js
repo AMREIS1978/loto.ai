@@ -134,12 +134,26 @@ function extractOfficialResult(source, html) {
   if (main.some(n => !Number.isInteger(n) || n < 1 || n > limits.main)) return null;
   if (extras.some(n => !Number.isInteger(n) || n < 1 || n > limits.extra)) return null;
   const contest = contestMatch[1];
+  // Only report a draw date if it is explicitly present in the official page.
+  const dateArea = text.slice(Math.max(0, contestMatch.index - 100), contestMatch.index + 220);
+  const dateMatch = dateArea.match(/\\b([0-3]?\\d)[\\/.-]([01]?\\d)[\\/.-](20\\d{2})\\b/);
+  const drawDate = dateMatch
+    ? [dateMatch[1].padStart(2, "0"), dateMatch[2].padStart(2, "0"), dateMatch[3]].join("/")
+    : null;
+  const formattedMessage = [
+    source.title,
+    drawDate ? `Data: ${drawDate}` : "Data: não indicada na fonte",
+    `Sorteio n.º ${contest}`,
+    `Números: ${main.join(" - ")}`,
+    `${source.extraLabel}: ${extras.join(" - ")}`
+  ].join("\\n");
 
   return {
     drawId: `${source.game}:${contest}`,
     game: source.game,
     title: `${source.title} — ${contest}`,
-    message: `${source.title} ${contest}: ${main.join(" ")} + ${extras.join(" ")}`,
+    message: formattedMessage,
+    drawDate,
     numbers: main,
     extras,
     source: source.url,
