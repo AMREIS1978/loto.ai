@@ -70,6 +70,16 @@ class AppStore(context: Context) {
         prefs.edit().putStringSet("game_groups_${gameKey(game)}", ids).apply()
     }
 
+    fun saveLatestResult(game: String, title: String, message: String) {
+        prefs.edit().putString("latest_title_$game", title)
+            .putString("latest_message_$game", message).apply()
+    }
+
+    fun latestResult(game: String): Pair<String, String>? {
+        val message = prefs.getString("latest_message_$game", null) ?: return null
+        return Pair(prefs.getString("latest_title_$game", game) ?: game, message)
+    }
+
     fun wasQueuedForRecipient(drawId: String, phone: String): Boolean =
         prefs.getBoolean("queued_${drawId}_${phone.filter { it.isDigit() }}", false)
 
