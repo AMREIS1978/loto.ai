@@ -29,9 +29,22 @@ object Automation {
 
         if (recipients.isEmpty()) return
 
-        val result = SmsEngine.sendMany(context, recipients, payload.message)
+        var queued = 0
+        var failed = 0
+        recipients.forEach { phone ->
+            if (store.wasQueuedForRecipient(payload.drawId, phone)) return@forEach
+            val attempt = SmsEngine.sendMany(context, listOf(phone), payload.message)
+            if (attempt.success == 1) {
+                store.markQueuedForRecipient(payload.drawId, phone)
+                store.recordDetailedSend(payload.drawId, payload.game, phone, payload.message, "SUBMITTED_TO_ANDROID")
+                queued++
+            } else {
+                store.recordDetailedSend(payload.drawId, payload.game, phone, payload.message, "FAILED_TO_SUBMIT")
+                failed++
+            }
+        }
 
-        if (result.failed == 0 && result.success == recipients.size) {
+        if (recipients.all { store.wasQueuedForRecipient(payload.drawId, it) }) {
             store.markProcessed(payload.drawId)
         }
 
@@ -40,8 +53,8 @@ object Automation {
                 timestamp = System.currentTimeMillis(),
                 title = "${payload.title} — envio automático",
                 recipients = recipients.size,
-                success = result.success,
-                failed = result.failed
+                success = queued,
+                failed = failed
             )
         )
     }
