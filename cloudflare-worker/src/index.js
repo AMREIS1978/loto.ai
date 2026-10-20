@@ -8,7 +8,7 @@ const json = (data, status = 200) => new Response(JSON.stringify(data, null, 2),
   }
 });
 
-const memory = globalThis.__LOTOSMS_MEMORY__ || (globalThis.__LOTOSMS_MEMORY__ = new Map());
+
 
 const OFFICIAL_SOURCES = [
   {
@@ -38,7 +38,8 @@ const OFFICIAL_SOURCES = [
 ];
 
 function getStore(env) {
-  return env.RESULTS_KV || null;
+  if (!env.RESULTS_KV) throw new Error("RESULTS_KV binding required");
+  return env.RESULTS_KV;
 }
 
 async function saveResult(env, result) {
@@ -47,10 +48,6 @@ async function saveResult(env, result) {
     await store.put(`draw:${result.drawId}`, JSON.stringify(result));
     await store.put(`latest:${result.game}`, JSON.stringify(result));
     await store.put("latest:any", JSON.stringify(result));
-  } else {
-    memory.set(`draw:${result.drawId}`, result);
-    memory.set(`latest:${result.game}`, result);
-    memory.set("latest:any", result);
   }
 }
 
@@ -60,7 +57,7 @@ async function readResult(env, key) {
     const raw = await store.get(key);
     return raw ? JSON.parse(raw) : null;
   }
-  return memory.get(key) || null;
+  return null;
 }
 
 async function notifyDevices(env, result) {
@@ -189,19 +186,20 @@ export default {
         ok: true,
         service: "LotoSMS API",
         version: "0.2.0",
-        storage: env.RESULTS_KV ? "KV" : "memory-fallback",
-        officialPolling: "every 5 minutes"
+        storage: env.RESULTS_KV ? "KV" : "NOT_CONFIGURED",
+        officialPolling: "requires deployed cron trigger"
       });
     }
 
     if (request.method === "GET" && url.pathname === "/results/latest") {
+      if (!env.RESULTS_KV) return json({ ok: false, error: "storage_not_configured" }, 503);
       const game = url.searchParams.get("game")?.trim().toLowerCase();
       const result = await readResult(env, game ? `latest:${game}` : "latest:any");
       return result ? json(result) : json({ ok: true, result: null });
     }
 
     if (request.method === "POST" && url.pathname === "/refresh") {
-      if (env.PUBLISH_SECRET && request.headers.get("x-publish-secret") !== env.PUBLISH_SECRET) {
+      if (!env.PUBLISH_SECRET || request.headers.get("x-publish-secret") !== env.PUBLISH_SECRET) {
         return json({ ok: false, error: "unauthorized" }, 401);
       }
       return json({ ok: true, checks: await refreshOfficialResults(env) });
