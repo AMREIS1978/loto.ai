@@ -97,7 +97,9 @@ class AppStore(context: Context) {
             put("message", message)
             put("status", status)
         })
-        prefs.edit().putString("send_details", arr.toString()).apply()
+        val trimmed = JSONArray()
+        for (i in maxOf(0, arr.length() - 500) until arr.length()) trimmed.put(arr.get(i))
+        prefs.edit().putString("send_details", trimmed.toString()).apply()
     }
 
     fun detailedSendHistory(): String = prefs.getString("send_details", "[]") ?: "[]"
@@ -115,7 +117,9 @@ class AppStore(context: Context) {
             put("success", entry.success)
             put("failed", entry.failed)
         })
-        prefs.edit().putString("history", arr.toString()).apply()
+        val trimmed = JSONArray()
+        for (i in maxOf(0, arr.length() - 300) until arr.length()) trimmed.put(arr.get(i))
+        prefs.edit().putString("history", trimmed.toString()).apply()
     }
 
     private fun gameKey(value: String): String = value
