@@ -52,6 +52,8 @@ class ResultSyncWorker(
                 val title = json.optString("title", payloadGame)
                 val message = json.optString("message")
 
+                if (drawId.isBlank() || message.isBlank()) return@withContext Result.retry()
+
                 if (drawId.isNotBlank() && message.isNotBlank()) {
                     Automation.onNewDraw(
                         applicationContext,
