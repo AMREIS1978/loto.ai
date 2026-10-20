@@ -29,6 +29,8 @@ object Automation {
 
         if (recipients.isEmpty()) return
 
+        if (!SmsEngine.canSend(context)) return
+
         var queued = 0
         var failed = 0
         recipients.forEach { phone ->
