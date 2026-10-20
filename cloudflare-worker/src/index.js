@@ -287,3 +287,6 @@ export default {
     ctx.waitUntil(refreshOfficialResults(env));
   }
 };
+
+// Export the pure parser for deterministic tests without running a Worker.
+export { extractOfficialResult, OFFICIAL_SOURCES };
