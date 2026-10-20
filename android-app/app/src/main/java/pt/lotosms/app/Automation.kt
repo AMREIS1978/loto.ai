@@ -35,7 +35,7 @@ object Automation {
         var failed = 0
         recipients.forEach { phone ->
             if (store.wasQueuedForRecipient(payload.drawId, phone)) return@forEach
-            val attempt = SmsEngine.sendMany(context, listOf(phone), payload.message)
+            val attempt = SmsEngine.sendMany(context, listOf(phone), payload.message, payload.drawId, payload.game)
             if (attempt.success == 1) {
                 store.markQueuedForRecipient(payload.drawId, phone)
                 store.recordDetailedSend(payload.drawId, payload.game, phone, payload.message, "SUBMITTED_TO_ANDROID")
