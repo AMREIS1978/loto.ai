@@ -70,6 +70,28 @@ class AppStore(context: Context) {
         prefs.edit().putStringSet("game_groups_${gameKey(game)}", ids).apply()
     }
 
+    fun wasQueuedForRecipient(drawId: String, phone: String): Boolean =
+        prefs.getBoolean("queued_${drawId}_${phone.filter { it.isDigit() }}", false)
+
+    fun markQueuedForRecipient(drawId: String, phone: String) {
+        prefs.edit().putBoolean("queued_${drawId}_${phone.filter { it.isDigit() }}", true).apply()
+    }
+
+    fun recordDetailedSend(drawId: String, game: String, phone: String, message: String, status: String) {
+        val arr = JSONArray(prefs.getString("send_details", "[]") ?: "[]")
+        arr.put(JSONObject().apply {
+            put("timestamp", System.currentTimeMillis())
+            put("drawId", drawId)
+            put("game", game)
+            put("phone", phone)
+            put("message", message)
+            put("status", status)
+        })
+        prefs.edit().putString("send_details", arr.toString()).apply()
+    }
+
+    fun detailedSendHistory(): String = prefs.getString("send_details", "[]") ?: "[]"
+
     fun hasProcessed(drawId: String): Boolean = prefs.getBoolean("draw_$drawId", false)
     fun markProcessed(drawId: String) = prefs.edit().putBoolean("draw_$drawId", true).apply()
 
