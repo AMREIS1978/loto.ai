@@ -136,7 +136,7 @@ function extractOfficialResult(source, html) {
   const contest = contestMatch[1];
   // Only report a draw date if it is explicitly present in the official page.
   const dateArea = text.slice(Math.max(0, contestMatch.index - 100), contestMatch.index + 220);
-  const dateMatch = dateArea.match(/\\b([0-3]?\\d)[\\/.-]([01]?\\d)[\\/.-](20\\d{2})\\b/);
+  const dateMatch = dateArea.match(/\b([0-3]?\d)[\/.-]([01]?\d)[\/.-](20\d{2})\b/);
   const drawDate = dateMatch
     ? [dateMatch[1].padStart(2, "0"), dateMatch[2].padStart(2, "0"), dateMatch[3]].join("/")
     : null;
@@ -146,7 +146,7 @@ function extractOfficialResult(source, html) {
     `Sorteio n.º ${contest}`,
     `Números: ${main.join(" - ")}`,
     `${source.extraLabel}: ${extras.join(" - ")}`
-  ].join("\\n");
+  ].join("\n");
 
   return {
     drawId: `${source.game}:${contest}`,
