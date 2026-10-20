@@ -17,7 +17,7 @@ const OFFICIAL_SOURCES = [
     url: "https://www.jogossantacasa.pt/web/SCCartazResult/euroMilhoes",
     numbers: 5,
     extras: 2,
-    extraLabel: "estrelas"
+    extraLabel: "Estrelas"
   },
   {
     game: "totoloto",
