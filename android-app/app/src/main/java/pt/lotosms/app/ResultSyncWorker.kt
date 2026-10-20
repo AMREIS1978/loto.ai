@@ -3,6 +3,9 @@ package pt.lotosms.app
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.Constraints
+import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -29,6 +32,7 @@ class ResultSyncWorker(
 
             var anyFailure = false
             for (game in selected) {
+                try {
                 val connection = (URL("$API_BASE_URL/results/latest?game=$game").openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
                     connectTimeout = 10_000
@@ -47,7 +51,11 @@ class ResultSyncWorker(
                 connection.disconnect()
                 val json = JSONObject(body)
 
-                if (!json.has("drawId")) continue // No result published for this game yet
+                if (!json.has("drawId")) {
+                    if (json.optBoolean("ok") && json.isNull("result")) continue
+                    anyFailure = true
+                    continue
+                }
 
                 val drawId = json.optString("drawId")
                 val payloadGame = json.optString("game", game)
@@ -65,6 +73,9 @@ class ResultSyncWorker(
                         applicationContext,
                         DrawPayload(drawId, payloadGame, title, message)
                     )
+                }
+                } catch (_: Exception) {
+                    anyFailure = true // Do not prevent the remaining games from being checked.
                 }
             }
 
@@ -87,7 +98,9 @@ class ResultSyncWorker(
         private const val UNIQUE_WORK = "lotosms-result-sync"
 
         fun schedule(context: Context) {
-            val request = PeriodicWorkRequestBuilder<ResultSyncWorker>(15, TimeUnit.MINUTES).build()
+            val request = PeriodicWorkRequestBuilder<ResultSyncWorker>(15, TimeUnit.MINUTES)
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 UNIQUE_WORK,
                 ExistingPeriodicWorkPolicy.UPDATE,
@@ -96,8 +109,10 @@ class ResultSyncWorker(
         }
 
         fun runNow(context: Context) {
-            val request = androidx.work.OneTimeWorkRequestBuilder<ResultSyncWorker>().build()
-            WorkManager.getInstance(context).enqueue(request)
+            val request = androidx.work.OneTimeWorkRequestBuilder<ResultSyncWorker>()
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork("lotosms-immediate-sync", ExistingWorkPolicy.KEEP, request)
         }
     }
 }
