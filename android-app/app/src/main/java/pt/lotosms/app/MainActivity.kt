@@ -76,8 +76,27 @@ fun LotoSmsApp(activity: MainActivity) {
 fun HomeScreen(context: Context) {
     val store = remember { AppStore(context) }
     var auto by remember { mutableStateOf(store.isAutomaticEnabled()) }
+    var latest by remember { mutableStateOf(listOf<Pair<String, String>>()) }
+    LaunchedEffect(Unit) {
+        ResultSyncWorker.runNow(context)
+        while (true) {
+            latest = listOf("euromilhoes", "totoloto", "eurodreams").mapNotNull { store.latestResult(it) }
+            delay(15_000)
+        }
+    }
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Resultados e mensagens", style = MaterialTheme.typography.headlineMedium)
+        Card {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Últimos resultados", style = MaterialTheme.typography.titleLarge)
+                if (latest.isEmpty()) Text("A aguardar resultados oficiais. Verifique a ligação ao servidor.")
+                latest.forEach { (title, message) ->
+                    Text(title, style = MaterialTheme.typography.titleMedium)
+                    Text(message)
+                }
+                Button(onClick = { ResultSyncWorker.runNow(context) }) { Text("Atualizar resultados") }
+            }
+        }
         Card { Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Resultados automáticos", style = MaterialTheme.typography.titleLarge)
             Text("Quando sair uma nova chave, a LotoSMS identifica o jogo e envia automaticamente por SMS apenas aos grupos associados a esse sorteio.")
