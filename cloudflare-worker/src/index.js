@@ -122,6 +122,17 @@ function extractOfficialResult(source, html) {
   const values = match.slice(1).map(Number);
   const main = values.slice(0, source.numbers);
   const extras = values.slice(source.numbers);
+  const ranges = {
+    euromilhoes: { main: 50, extra: 12 },
+    totoloto: { main: 49, extra: 13 },
+    eurodreams: { main: 40, extra: 5 }
+  };
+  const limits = ranges[source.game];
+  if (!limits) return null;
+  if (main.length !== source.numbers || extras.length !== source.extras) return null;
+  if (new Set(main).size !== main.length || new Set(extras).size !== extras.length) return null;
+  if (main.some(n => !Number.isInteger(n) || n < 1 || n > limits.main)) return null;
+  if (extras.some(n => !Number.isInteger(n) || n < 1 || n > limits.extra)) return null;
   const contest = contestMatch[1];
 
   return {
