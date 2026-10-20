@@ -103,10 +103,6 @@ function extractOfficialResult(source, html) {
   if (keyIndex < 0) return null;
 
   const keyArea = text.slice(keyIndex, keyIndex + 500);
-  const count = source.numbers + source.extras;
-  const numberPattern = Array.from({ length: count }, () => "([0-9]{1,2})").join("\\s+");
-  const keyRegex = new RegExp(`${numberPattern.slice(0, source.numbers * 14)}\\s*\\+\\s*${Array.from({ length: source.extras }, () => "([0-9]{1,2})").join("\\s+")}`, "i");
-
   // Regex explícita para manter a extração previsível em cada jogo.
   let match;
   if (source.game === "euromilhoes") {
@@ -116,7 +112,6 @@ function extractOfficialResult(source, html) {
   } else {
     match = keyArea.match(/([0-9]{1,2})\s+([0-9]{1,2})\s+([0-9]{1,2})\s+([0-9]{1,2})\s+([0-9]{1,2})\s+([0-9]{1,2})\s*\+\s*([0-9]{1,2})/);
   }
-  void keyRegex;
   if (!match) return null;
 
   const values = match.slice(1).map(Number);
