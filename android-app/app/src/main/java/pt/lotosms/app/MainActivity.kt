@@ -16,6 +16,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
 import java.time.DayOfWeek
 import java.time.Duration
 import java.time.ZoneId
@@ -471,6 +476,7 @@ fun HistoryScreen() {
 fun SettingsScreen(activity: MainActivity) {
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Definições", style = MaterialTheme.typography.headlineMedium)
+        DiagnosticPanel(activity)
         Card { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Resultados automáticos", style = MaterialTheme.typography.titleLarge)
             Text("A app verifica separadamente cada jogo ativo e envia a chave por SMS aos grupos associados.")
@@ -483,5 +489,62 @@ fun SettingsScreen(activity: MainActivity) {
         }}
         if (!ContactHelper.hasPermission(activity)) Button(onClick = { activity.requestContacts() }) { Text("Autorizar contactos") }
         Text("Podem aplicar-se custos do seu tarifário móvel. Utilize apenas destinatários que tenham consentido receber estas mensagens.")
+    }
+}
+
+@Composable
+fun DiagnosticPanel(context: Context) {
+    var serverStatus by remember { mutableStateOf("Por testar") }
+    var storageStatus by remember { mutableStateOf("Por testar") }
+    var phone by remember { mutableStateOf("") }
+    var smsStatus by remember { mutableStateOf("Nenhum SMS de teste enviado") }
+    var testing by remember { mutableStateOf(false) }
+    val store = remember { AppStore(context) }
+    val scope = rememberCoroutineScope()
+
+    Card {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Centro de testes", style = MaterialTheme.typography.titleLarge)
+            Text("Diagnóstico sem enviar mensagens aos grupos.")
+            Text("Permissão SMS: " + if (SmsEngine.canSend(context)) "Autorizada" else "Em falta")
+            Text("Envio automático: " + if (store.isAutomaticEnabled()) "Ativado" else "Desativado")
+            Text("Servidor: $serverStatus")
+            Text("Armazenamento: $storageStatus")
+            Button(enabled = !testing, onClick = {
+                testing = true
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        try {
+                            val conn = URL("https://loto-ai.a-miguel-reis.workers.dev/health")
+                                .openConnection() as HttpURLConnection
+                            conn.connectTimeout = 8000
+                            conn.readTimeout = 8000
+                            val code = conn.responseCode
+                            val body = if (code in 200..299) conn.inputStream.bufferedReader().use { it.readText() } else ""
+                            conn.disconnect()
+                            val json = org.json.JSONObject(body)
+                            Pair(if (code == 200 && json.optBoolean("ok")) "A responder" else "Erro HTTP $code",
+                                json.optString("storage", "Não indicado"))
+                        } catch (e: Exception) {
+                            Pair("Sem ligação: " + (e.message ?: "erro"), "Não verificado")
+                        }
+                    }
+                    serverStatus = result.first
+                    storageStatus = result.second
+                    testing = false
+                }
+            }) { Text("Testar ligação ao servidor") }
+            OutlinedTextField(value = phone, onValueChange = { phone = it },
+                label = { Text("O meu número para SMS de teste") }, singleLine = true)
+            Button(enabled = SmsEngine.canSend(context) && phone.filter { it.isDigit() }.length in 9..15,
+                onClick = {
+                    val result = SmsEngine.sendMany(context, listOf(phone), "LOTO.AI: SMS de teste solicitado na aplicação.")
+                    smsStatus = if (result.success == 1) "Submetido ao Android; confirme a receção no telemóvel."
+                        else "Falhou a submissão ao Android."
+                }) { Text("Enviar SMS de teste para este número") }
+            Text(smsStatus, style = MaterialTheme.typography.bodySmall)
+            Text("O teste não marca sorteios como processados nem envia mensagens aos grupos.",
+                style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
