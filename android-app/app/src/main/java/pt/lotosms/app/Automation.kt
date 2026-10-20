@@ -31,7 +31,7 @@ object Automation {
 
         val result = SmsEngine.sendMany(context, recipients, payload.message)
 
-        if (result.success > 0) {
+        if (result.failed == 0 && result.success == recipients.size) {
             store.markProcessed(payload.drawId)
         }
 
