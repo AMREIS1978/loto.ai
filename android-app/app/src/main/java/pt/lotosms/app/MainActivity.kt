@@ -48,9 +48,9 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun LotoSmsApp(activity: MainActivity) {
     var tab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Início", "Jogos", "Grupos", "Em massa", "Histórico", "Definições")
+    val tabs = listOf("Início", "Alertas", "Grupos", "Em massa", "Histórico", "Definições")
     Scaffold(
-        topBar = { TopAppBar(title = { Text("LotoSMS") }) },
+        topBar = { TopAppBar(title = { Text("Alertas") }) },
         bottomBar = {
             NavigationBar {
                 tabs.forEachIndexed { index, label ->
@@ -90,7 +90,7 @@ fun HomeScreen(context: Context) {
         }
     }
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Resultados e mensagens", style = MaterialTheme.typography.headlineMedium)
+        Text("Centro de alertas", style = MaterialTheme.typography.headlineMedium)
         Card {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Últimos resultados", style = MaterialTheme.typography.titleLarge)
@@ -104,7 +104,7 @@ fun HomeScreen(context: Context) {
         }
         Card { Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Resultados automáticos", style = MaterialTheme.typography.titleLarge)
-            Text("Quando sair uma nova chave, a LotoSMS identifica o jogo e envia automaticamente por SMS apenas aos grupos associados a esse sorteio.")
+            Text("Quando houver um novo resultado, o sistema envia automaticamente por SMS apenas aos grupos associados ao tema selecionado.")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(checked = auto, onCheckedChange = { auto = it; store.setAutomaticEnabled(it) })
                 Spacer(Modifier.width(8.dp)); Text(if (auto) "Ligado" else "Desligado")
