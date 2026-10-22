@@ -1,27 +1,19 @@
-# LotoSMS — Android / Play Store
+# LOTO AI — Android
 
-Base funcional Android (Kotlin + Jetpack Compose) para uma app de mensagens que pode enviar, pelo SIM do próprio telefone, mensagens escolhidas pelo utilizador e automatismos associados a novos resultados.
+## Estado técnico verificado em 22/10/2026
+- O envio SMS usa `SmsManager` com a permissão `SEND_SMS`; **o código atual não exige ser a aplicação SMS predefinida**. A documentação anterior estava incorreta.
+- O envio depende de um telefone ligado, SIM ativo, rede móvel e autorização de SMS; pode ter custos da operadora.
+- `ResultSyncWorker` usa WorkManager com intervalo mínimo de 15 minutos, sujeito a atrasos e restrições de bateria do Android. Não é execução contínua garantida.
+- O servidor Cloudflare pode consultar resultados de cinco em cinco minutos se o cron estiver efetivamente publicado, mas exige binding persistente `RESULTS_KV`.
+- A receção de notificações Firebase e o envio de SMS ainda requerem validação num telefone real.
+- A compilação GitHub Actions de 20/10/2026 gerou uma APK debug; a APK de atualização assinada não foi produzida.
 
-## O que já está incluído
-- Pedido do papel de **app SMS predefinida** através de `ROLE_SMS`.
-- Ecrã inicial moderno com navegação: Início, Jogos, Grupos, Histórico e Definições.
-- Grupos de destinatários guardados localmente.
-- Envio imediato para um grupo, com números duplicados eliminados.
-- Motor de SMS que só envia automaticamente se a app for realmente o gestor SMS predefinido e tiver `SEND_SMS` concedido.
-- Proteção contra o mesmo `drawId` ser enviado duas vezes.
-- `FirebaseMessagingService` preparado para receber um novo resultado do backend e disparar o fluxo local.
-- Componentes exigidos para uma app SMS: `SMS_DELIVER`, `WAP_PUSH_DELIVER` e atividade de `SENDTO`.
-- Backend de referência em `backend/` para publicar um novo resultado via Firebase Cloud Messaging.
+## Antes de considerar pronta
+1. Configurar e publicar Cloudflare KV, cron e credenciais de notificações, sem expor segredos no repositório.
+2. Validar os resultados reais de Euromilhões, Totoloto e EuroDreams, inclusive mudanças no HTML oficial e prevenção de duplicados.
+3. Testar permissões SMS, SIM, entrega, erros e reinícios do Android em dispositivo real.
+4. Configurar assinatura de release estável, compilar APK assinada e testar atualização sobre a instalação anterior.
+5. Verificar regras atuais da Google Play para permissões SMS antes de qualquer publicação.
 
-## Importante
-Esta é uma base de desenvolvimento. Antes de submeter à Google Play é obrigatório terminar a experiência de gestor SMS (caixa de entrada/conversas, receção, persistência, etc.) e rever a política de permissões vigente no momento da submissão.
-
-## Compilar
-1. Abrir a pasta no Android Studio.
-2. Instalar Android SDK 35 se solicitado.
-3. Adicionar `google-services.json` ao módulo `app/` para usar Firebase Messaging.
-4. Adicionar o plugin Google Services ao projeto antes de ativar FCM em produção.
-5. Sincronizar Gradle.
-6. Executar num telefone Android real com SIM para testar SMS.
-
-Para release de Play Store, gerar um **AAB assinado** e não guardar keystore, palavras-passe ou credenciais no GitHub.
+## Compilação
+O projeto Android está em `android-app/`. Para testar em dispositivo, usar Android Studio/Gradle e instalar a APK de debug. Não confundir compilação bem-sucedida com validação funcional de ponta a ponta.
