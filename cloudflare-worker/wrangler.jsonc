@@ -1,7 +1,10 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "lotosms-api",
+  "name": "loto-ai",
   "main": "src/index.js",
   "compatibility_date": "2026-10-19",
-  "workers_dev": true
+  "workers_dev": true,
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  }
 }
