@@ -67,11 +67,69 @@ fun LotoSmsApp(activity: MainActivity) {
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
                 0 -> HomeScreen(activity)
-                1 -> GamesScreen(activity)
+                1 -> AlertsCatalogScreen(activity)
                 2 -> GroupsScreen(activity)
                 3 -> BulkSendScreen(activity)
                 4 -> HistoryScreen()
                 else -> SettingsScreen(activity)
+            }
+        }
+    }
+}
+
+
+private data class AlertTopic(val name: String, val description: String, val active: Boolean)
+
+private val alertTopics = listOf(
+    AlertTopic("Euromilhões", "Resultados oficiais dos sorteios", true),
+    AlertTopic("Totoloto", "Resultados oficiais dos sorteios", true),
+    AlertTopic("EuroDreams", "Resultados oficiais dos sorteios", true),
+    AlertTopic("Meteorologia", "Previsões e observações", false),
+    AlertTopic("Avisos meteorológicos", "Avisos do IPMA", false),
+    AlertTopic("Trânsito", "Ocorrências rodoviárias", false),
+    AlertTopic("Sismos", "Atividade sísmica", false),
+    AlertTopic("Incêndios", "Ocorrências de incêndio", false),
+    AlertTopic("Proteção civil", "Ocorrências e avisos", false),
+    AlertTopic("Qualidade do ar", "Indicadores ambientais", false),
+    AlertTopic("Estado do mar", "Condições marítimas", false),
+    AlertTopic("Risco de cheias", "Informação hidrológica", false),
+    AlertTopic("Combustíveis", "Preços de combustíveis", false),
+    AlertTopic("Transportes públicos", "Perturbações de serviço", false),
+    AlertTopic("Taxas de câmbio", "Cotações monetárias", false)
+)
+
+@Composable
+fun AlertsCatalogScreen(context: Context) {
+    val store = remember { AppStore(context) }
+    var showLottery by remember { mutableStateOf(false) }
+    if (showLottery) {
+        Column {
+            TextButton(onClick = { showLottery = false }) { Text("Voltar aos alertas") }
+            Box(Modifier.weight(1f)) { GamesScreen(context) }
+        }
+        return
+    }
+    LazyColumn(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Text("Escolha os seus alertas", style = MaterialTheme.typography.headlineMedium)
+            Text("Só os temas com integração disponível podem ser ativados. Os restantes estão em preparação.")
+        }
+        items(alertTopics, key = { it.name }) { topic ->
+            Card {
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(topic.name, style = MaterialTheme.typography.titleMedium)
+                        Text(topic.description, style = MaterialTheme.typography.bodySmall)
+                        Text(if (topic.active) "Configuração disponível" else "Em preparação — sem envios", style = MaterialTheme.typography.labelSmall)
+                    }
+                    if (topic.active) {
+                        TextButton(onClick = { showLottery = true }) { Text("Configurar") }
+                    }
+                }
             }
         }
     }
