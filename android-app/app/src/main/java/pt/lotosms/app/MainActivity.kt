@@ -16,6 +16,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
 import java.time.DayOfWeek
 import java.time.Duration
 import java.time.ZoneId
@@ -43,9 +48,9 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun LotoSmsApp(activity: MainActivity) {
     var tab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Início", "Jogos", "Grupos", "Em massa", "Histórico", "Definições")
+    val tabs = listOf("Início", "Alertas", "Grupos", "Em massa", "Histórico", "Definições")
     Scaffold(
-        topBar = { TopAppBar(title = { Text("LotoSMS") }) },
+        topBar = { TopAppBar(title = { Text("Alertas") }) },
         bottomBar = {
             NavigationBar {
                 tabs.forEachIndexed { index, label ->
@@ -62,7 +67,7 @@ fun LotoSmsApp(activity: MainActivity) {
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
                 0 -> HomeScreen(activity)
-                1 -> GamesScreen(activity)
+                1 -> AlertsCatalogScreen(activity)
                 2 -> GroupsScreen(activity)
                 3 -> BulkSendScreen(activity)
                 4 -> HistoryScreen()
@@ -72,15 +77,92 @@ fun LotoSmsApp(activity: MainActivity) {
     }
 }
 
+
+private data class AlertTopic(val name: String, val description: String, val active: Boolean)
+
+private val alertTopics = listOf(
+    AlertTopic("Euromilhões", "Resultados oficiais dos sorteios", true),
+    AlertTopic("Totoloto", "Resultados oficiais dos sorteios", true),
+    AlertTopic("EuroDreams", "Resultados oficiais dos sorteios", true),
+    AlertTopic("Meteorologia", "Previsões e observações", false),
+    AlertTopic("Avisos meteorológicos", "Avisos do IPMA", false),
+    AlertTopic("Trânsito", "Ocorrências rodoviárias", false),
+    AlertTopic("Sismos", "Atividade sísmica", false),
+    AlertTopic("Incêndios", "Ocorrências de incêndio", false),
+    AlertTopic("Proteção civil", "Ocorrências e avisos", false),
+    AlertTopic("Qualidade do ar", "Indicadores ambientais", false),
+    AlertTopic("Estado do mar", "Condições marítimas", false),
+    AlertTopic("Risco de cheias", "Informação hidrológica", false),
+    AlertTopic("Combustíveis", "Preços de combustíveis", false),
+    AlertTopic("Transportes públicos", "Perturbações de serviço", false),
+    AlertTopic("Taxas de câmbio", "Cotações monetárias", false)
+)
+
+@Composable
+fun AlertsCatalogScreen(context: Context) {
+    val store = remember { AppStore(context) }
+    var showLottery by remember { mutableStateOf(false) }
+    if (showLottery) {
+        Column {
+            TextButton(onClick = { showLottery = false }) { Text("Voltar aos alertas") }
+            Box(Modifier.weight(1f)) { GamesScreen(context) }
+        }
+        return
+    }
+    LazyColumn(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Text("Escolha os seus alertas", style = MaterialTheme.typography.headlineMedium)
+            Text("Só os temas com integração disponível podem ser ativados. Os restantes estão em preparação.")
+        }
+        items(alertTopics, key = { it.name }) { topic ->
+            Card {
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(topic.name, style = MaterialTheme.typography.titleMedium)
+                        Text(topic.description, style = MaterialTheme.typography.bodySmall)
+                        Text(if (topic.active) "Configuração disponível" else "Em preparação — sem envios", style = MaterialTheme.typography.labelSmall)
+                    }
+                    if (topic.active) {
+                        TextButton(onClick = { showLottery = true }) { Text("Configurar") }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun HomeScreen(context: Context) {
     val store = remember { AppStore(context) }
     var auto by remember { mutableStateOf(store.isAutomaticEnabled()) }
+    var latest by remember { mutableStateOf(listOf<Pair<String, String>>()) }
+    LaunchedEffect(Unit) {
+        ResultSyncWorker.runNow(context)
+        while (true) {
+            latest = listOf("euromilhoes", "totoloto", "eurodreams").mapNotNull { store.latestResult(it) }
+            delay(15_000)
+        }
+    }
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Resultados e mensagens", style = MaterialTheme.typography.headlineMedium)
+        Text("Centro de alertas", style = MaterialTheme.typography.headlineMedium)
+        Card {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Últimos resultados", style = MaterialTheme.typography.titleLarge)
+                if (latest.isEmpty()) Text("A aguardar resultados oficiais. Verifique a ligação ao servidor.")
+                latest.forEach { (title, message) ->
+                    Text(title, style = MaterialTheme.typography.titleMedium)
+                    Text(message)
+                }
+                Button(onClick = { ResultSyncWorker.runNow(context) }) { Text("Atualizar resultados") }
+            }
+        }
         Card { Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Resultados automáticos", style = MaterialTheme.typography.titleLarge)
-            Text("Quando sair uma nova chave, a LotoSMS identifica o jogo e envia automaticamente por SMS apenas aos grupos associados a esse sorteio.")
+            Text("Quando houver um novo resultado, o sistema envia automaticamente por SMS apenas aos grupos associados ao tema selecionado.")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(checked = auto, onCheckedChange = { auto = it; store.setAutomaticEnabled(it) })
                 Spacer(Modifier.width(8.dp)); Text(if (auto) "Ligado" else "Desligado")
@@ -452,6 +534,7 @@ fun HistoryScreen() {
 fun SettingsScreen(activity: MainActivity) {
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Definições", style = MaterialTheme.typography.headlineMedium)
+        DiagnosticPanel(activity)
         Card { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Resultados automáticos", style = MaterialTheme.typography.titleLarge)
             Text("A app verifica separadamente cada jogo ativo e envia a chave por SMS aos grupos associados.")
@@ -464,5 +547,62 @@ fun SettingsScreen(activity: MainActivity) {
         }}
         if (!ContactHelper.hasPermission(activity)) Button(onClick = { activity.requestContacts() }) { Text("Autorizar contactos") }
         Text("Podem aplicar-se custos do seu tarifário móvel. Utilize apenas destinatários que tenham consentido receber estas mensagens.")
+    }
+}
+
+@Composable
+fun DiagnosticPanel(context: Context) {
+    var serverStatus by remember { mutableStateOf("Por testar") }
+    var storageStatus by remember { mutableStateOf("Por testar") }
+    var phone by remember { mutableStateOf("") }
+    var smsStatus by remember { mutableStateOf("Nenhum SMS de teste enviado") }
+    var testing by remember { mutableStateOf(false) }
+    val store = remember { AppStore(context) }
+    val scope = rememberCoroutineScope()
+
+    Card {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Centro de testes", style = MaterialTheme.typography.titleLarge)
+            Text("Diagnóstico sem enviar mensagens aos grupos.")
+            Text("Permissão SMS: " + if (SmsEngine.canSend(context)) "Autorizada" else "Em falta")
+            Text("Envio automático: " + if (store.isAutomaticEnabled()) "Ativado" else "Desativado")
+            Text("Servidor: $serverStatus")
+            Text("Armazenamento: $storageStatus")
+            Button(enabled = !testing, onClick = {
+                testing = true
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        try {
+                            val conn = URL("https://loto-ai.a-miguel-reis.workers.dev/health")
+                                .openConnection() as HttpURLConnection
+                            conn.connectTimeout = 8000
+                            conn.readTimeout = 8000
+                            val code = conn.responseCode
+                            val body = if (code in 200..299) conn.inputStream.bufferedReader().use { it.readText() } else ""
+                            conn.disconnect()
+                            val json = org.json.JSONObject(body)
+                            Pair(if (code == 200 && json.optBoolean("ok")) "A responder" else "Erro HTTP $code",
+                                json.optString("storage", "Não indicado"))
+                        } catch (e: Exception) {
+                            Pair("Sem ligação: " + (e.message ?: "erro"), "Não verificado")
+                        }
+                    }
+                    serverStatus = result.first
+                    storageStatus = result.second
+                    testing = false
+                }
+            }) { Text("Testar ligação ao servidor") }
+            OutlinedTextField(value = phone, onValueChange = { phone = it },
+                label = { Text("O meu número para SMS de teste") }, singleLine = true)
+            Button(enabled = SmsEngine.canSend(context) && phone.filter { it.isDigit() }.length in 9..15,
+                onClick = {
+                    val result = SmsEngine.sendMany(context, listOf(phone), "LOTO.AI: SMS de teste solicitado na aplicação.")
+                    smsStatus = if (result.success == 1) "Submetido ao Android; confirme a receção no telemóvel."
+                        else "Falhou a submissão ao Android."
+                }) { Text("Enviar SMS de teste para este número") }
+            Text(smsStatus, style = MaterialTheme.typography.bodySmall)
+            Text("O teste não marca sorteios como processados nem envia mensagens aos grupos.",
+                style = MaterialTheme.typography.bodySmall)
+        }
     }
 }

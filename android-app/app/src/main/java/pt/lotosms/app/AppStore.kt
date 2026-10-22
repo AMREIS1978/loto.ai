@@ -70,6 +70,40 @@ class AppStore(context: Context) {
         prefs.edit().putStringSet("game_groups_${gameKey(game)}", ids).apply()
     }
 
+    fun saveLatestResult(game: String, title: String, message: String) {
+        prefs.edit().putString("latest_title_$game", title)
+            .putString("latest_message_$game", message).apply()
+    }
+
+    fun latestResult(game: String): Pair<String, String>? {
+        val message = prefs.getString("latest_message_$game", null) ?: return null
+        return Pair(prefs.getString("latest_title_$game", game) ?: game, message)
+    }
+
+    fun wasQueuedForRecipient(drawId: String, phone: String): Boolean =
+        prefs.getBoolean("queued_${drawId}_${phone.filter { it.isDigit() }}", false)
+
+    fun markQueuedForRecipient(drawId: String, phone: String) {
+        prefs.edit().putBoolean("queued_${drawId}_${phone.filter { it.isDigit() }}", true).apply()
+    }
+
+    fun recordDetailedSend(drawId: String, game: String, phone: String, message: String, status: String) {
+        val arr = JSONArray(prefs.getString("send_details", "[]") ?: "[]")
+        arr.put(JSONObject().apply {
+            put("timestamp", System.currentTimeMillis())
+            put("drawId", drawId)
+            put("game", game)
+            put("phone", phone)
+            put("message", message)
+            put("status", status)
+        })
+        val trimmed = JSONArray()
+        for (i in maxOf(0, arr.length() - 500) until arr.length()) trimmed.put(arr.get(i))
+        prefs.edit().putString("send_details", trimmed.toString()).apply()
+    }
+
+    fun detailedSendHistory(): String = prefs.getString("send_details", "[]") ?: "[]"
+
     fun hasProcessed(drawId: String): Boolean = prefs.getBoolean("draw_$drawId", false)
     fun markProcessed(drawId: String) = prefs.edit().putBoolean("draw_$drawId", true).apply()
 
@@ -83,7 +117,9 @@ class AppStore(context: Context) {
             put("success", entry.success)
             put("failed", entry.failed)
         })
-        prefs.edit().putString("history", arr.toString()).apply()
+        val trimmed = JSONArray()
+        for (i in maxOf(0, arr.length() - 300) until arr.length()) trimmed.put(arr.get(i))
+        prefs.edit().putString("history", trimmed.toString()).apply()
     }
 
     private fun gameKey(value: String): String = value

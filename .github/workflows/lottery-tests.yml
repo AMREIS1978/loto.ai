@@ -1,0 +1,26 @@
+name: Validate lottery message formatting
+on:
+  pull_request:
+    paths:
+      - 'cloudflare-worker/**'
+      - '.github/workflows/lottery-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'cloudflare-worker/**'
+      - '.github/workflows/lottery-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript syntax
+        run: node --check cloudflare-worker/src/index.js
+      - name: Test result parsing and SMS formatting
+        run: node --test cloudflare-worker/results.test.mjs

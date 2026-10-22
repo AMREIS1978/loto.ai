@@ -11,8 +11,30 @@ android {
         applicationId = "pt.lotosms.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
+    }
+
+    val signingFile = System.getenv("LOTO_SIGNING_STORE_FILE")
+    val signingPassword = System.getenv("LOTO_SIGNING_STORE_PASSWORD")
+    val signingAlias = System.getenv("LOTO_SIGNING_KEY_ALIAS")
+    val signingKeyPassword = System.getenv("LOTO_SIGNING_KEY_PASSWORD")
+
+    signingConfigs {
+        create("stableRelease") {
+            if (!signingFile.isNullOrBlank() && !signingPassword.isNullOrBlank() &&
+                !signingAlias.isNullOrBlank() && !signingKeyPassword.isNullOrBlank()) {
+                storeFile = file(signingFile)
+                storePassword = signingPassword
+                keyAlias = signingAlias
+                keyPassword = signingKeyPassword
+            }
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("stableRelease")
+        }
     }
 
     compileOptions {

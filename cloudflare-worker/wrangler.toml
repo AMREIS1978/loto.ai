@@ -1,0 +1,13 @@
+name = "loto-ai"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# A recolha automática só funciona se o Worker estiver publicado com este cron.
+[triggers]
+crons = ["*/5 * * * *"]
+
+# O namespace KV persistente deve ser criado no Cloudflare e associado como RESULTS_KV.
+# Não publicar em produção sem configurar o binding: memória local não é persistente.
+# [[kv_namespaces]]
+# binding = "RESULTS_KV"
+# id = "COLOCAR_ID_REAL_DO_NAMESPACE"

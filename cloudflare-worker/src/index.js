@@ -8,7 +8,7 @@ const json = (data, status = 200) => new Response(JSON.stringify(data, null, 2),
   }
 });
 
-const memory = globalThis.__LOTOSMS_MEMORY__ || (globalThis.__LOTOSMS_MEMORY__ = new Map());
+
 
 const OFFICIAL_SOURCES = [
   {
@@ -17,7 +17,7 @@ const OFFICIAL_SOURCES = [
     url: "https://www.jogossantacasa.pt/web/SCCartazResult/euroMilhoes",
     numbers: 5,
     extras: 2,
-    extraLabel: "estrelas"
+    extraLabel: "Estrelas"
   },
   {
     game: "totoloto",
@@ -38,7 +38,8 @@ const OFFICIAL_SOURCES = [
 ];
 
 function getStore(env) {
-  return env.RESULTS_KV || null;
+  if (!env.RESULTS_KV) throw new Error("RESULTS_KV binding required");
+  return env.RESULTS_KV;
 }
 
 async function saveResult(env, result) {
@@ -47,10 +48,6 @@ async function saveResult(env, result) {
     await store.put(`draw:${result.drawId}`, JSON.stringify(result));
     await store.put(`latest:${result.game}`, JSON.stringify(result));
     await store.put("latest:any", JSON.stringify(result));
-  } else {
-    memory.set(`draw:${result.drawId}`, result);
-    memory.set(`latest:${result.game}`, result);
-    memory.set("latest:any", result);
   }
 }
 
@@ -60,7 +57,7 @@ async function readResult(env, key) {
     const raw = await store.get(key);
     return raw ? JSON.parse(raw) : null;
   }
-  return memory.get(key) || null;
+  return null;
 }
 
 async function notifyDevices(env, result) {
@@ -106,10 +103,6 @@ function extractOfficialResult(source, html) {
   if (keyIndex < 0) return null;
 
   const keyArea = text.slice(keyIndex, keyIndex + 500);
-  const count = source.numbers + source.extras;
-  const numberPattern = Array.from({ length: count }, () => "([0-9]{1,2})").join("\\s+");
-  const keyRegex = new RegExp(`${numberPattern.slice(0, source.numbers * 14)}\\s*\\+\\s*${Array.from({ length: source.extras }, () => "([0-9]{1,2})").join("\\s+")}`, "i");
-
   // Regex explícita para manter a extração previsível em cada jogo.
   let match;
   if (source.game === "euromilhoes") {
@@ -119,19 +112,43 @@ function extractOfficialResult(source, html) {
   } else {
     match = keyArea.match(/([0-9]{1,2})\s+([0-9]{1,2})\s+([0-9]{1,2})\s+([0-9]{1,2})\s+([0-9]{1,2})\s+([0-9]{1,2})\s*\+\s*([0-9]{1,2})/);
   }
-  void keyRegex;
   if (!match) return null;
 
   const values = match.slice(1).map(Number);
   const main = values.slice(0, source.numbers);
   const extras = values.slice(source.numbers);
+  const ranges = {
+    euromilhoes: { main: 50, extra: 12 },
+    totoloto: { main: 49, extra: 13 },
+    eurodreams: { main: 40, extra: 5 }
+  };
+  const limits = ranges[source.game];
+  if (!limits) return null;
+  if (main.length !== source.numbers || extras.length !== source.extras) return null;
+  if (new Set(main).size !== main.length || new Set(extras).size !== extras.length) return null;
+  if (main.some(n => !Number.isInteger(n) || n < 1 || n > limits.main)) return null;
+  if (extras.some(n => !Number.isInteger(n) || n < 1 || n > limits.extra)) return null;
   const contest = contestMatch[1];
+  // Only report a draw date if it is explicitly present in the official page.
+  const dateArea = text.slice(Math.max(0, contestMatch.index - 100), contestMatch.index + 220);
+  const dateMatch = dateArea.match(/\b([0-3]?\d)[\/.-]([01]?\d)[\/.-](20\d{2})\b/);
+  const drawDate = dateMatch
+    ? [dateMatch[1].padStart(2, "0"), dateMatch[2].padStart(2, "0"), dateMatch[3]].join("/")
+    : null;
+  const formattedMessage = [
+    source.title,
+    drawDate ? `Data: ${drawDate}` : "Data: não indicada na fonte",
+    `Sorteio n.º ${contest}`,
+    `Números: ${main.join(" - ")}`,
+    `${source.extraLabel}: ${extras.join(" - ")}`
+  ].join("\n");
 
   return {
     drawId: `${source.game}:${contest}`,
     game: source.game,
     title: `${source.title} — ${contest}`,
-    message: `${source.title} ${contest}: ${main.join(" ")} + ${extras.join(" ")}`,
+    message: formattedMessage,
+    drawDate,
     numbers: main,
     extras,
     source: source.url,
@@ -163,6 +180,9 @@ async function refreshOfficialResults(env) {
 
       const existing = await readResult(env, `draw:${result.drawId}`);
       if (existing) {
+        if (existing.message !== result.message || existing.drawDate !== result.drawDate) {
+          await saveResult(env, result); // Refresh formatting without notifying a second time.
+        }
         checks.push({ game: source.game, ok: true, duplicate: true, drawId: result.drawId });
         continue;
       }
@@ -189,26 +209,27 @@ export default {
         ok: true,
         service: "LotoSMS API",
         version: "0.2.0",
-        storage: env.RESULTS_KV ? "KV" : "memory-fallback",
-        officialPolling: "every 5 minutes"
+        storage: env.RESULTS_KV ? "KV" : "NOT_CONFIGURED",
+        officialPolling: "requires deployed cron trigger"
       });
     }
 
     if (request.method === "GET" && url.pathname === "/results/latest") {
+      if (!env.RESULTS_KV) return json({ ok: false, error: "storage_not_configured" }, 503);
       const game = url.searchParams.get("game")?.trim().toLowerCase();
       const result = await readResult(env, game ? `latest:${game}` : "latest:any");
       return result ? json(result) : json({ ok: true, result: null });
     }
 
     if (request.method === "POST" && url.pathname === "/refresh") {
-      if (env.PUBLISH_SECRET && request.headers.get("x-publish-secret") !== env.PUBLISH_SECRET) {
+      if (!env.PUBLISH_SECRET || request.headers.get("x-publish-secret") !== env.PUBLISH_SECRET) {
         return json({ ok: false, error: "unauthorized" }, 401);
       }
       return json({ ok: true, checks: await refreshOfficialResults(env) });
     }
 
     if (request.method === "POST" && url.pathname === "/publish") {
-      if (env.PUBLISH_SECRET && request.headers.get("x-publish-secret") !== env.PUBLISH_SECRET) {
+      if (!env.PUBLISH_SECRET || request.headers.get("x-publish-secret") !== env.PUBLISH_SECRET) {
         return json({ ok: false, error: "unauthorized" }, 401);
       }
 
@@ -261,3 +282,6 @@ export default {
     ctx.waitUntil(refreshOfficialResults(env));
   }
 };
+
+// Export the pure parser for deterministic tests without running a Worker.
+export { extractOfficialResult, OFFICIAL_SOURCES };
